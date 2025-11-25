@@ -1,0 +1,87 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>x402 Requests</title>
+  <style>
+    body {
+      width: 400px;
+      font-family: sans-serif;
+      padding: 10px;
+    }
+    h1 {
+      font-size: 16px;
+      margin-top: 0;
+    }
+    #request-list {
+      list-style: none;
+      padding: 0;
+      max-height: 300px;
+      overflow-y: auto;
+    }
+    .request-item {
+      border-bottom: 1px solid #eee;
+      padding: 8px 0;
+      cursor: pointer;
+    }
+    .request-item:hover {
+      background-color: #f9f9f9;
+    }
+    .request-url {
+      font-weight: bold;
+      font-size: 12px;
+      word-break: break-all;
+    }
+    .request-time {
+      font-size: 10px;
+      color: #666;
+    }
+    .x402-badge {
+      background-color: #d4edda;
+      color: #155724;
+      padding: 2px 5px;
+      border-radius: 3px;
+      font-size: 10px;
+      margin-left: 5px;
+    }
+    #detail-view {
+      display: none;
+      border-top: 1px solid #ccc;
+      padding-top: 10px;
+      margin-top: 10px;
+    }
+    #back-button {
+      margin-bottom: 10px;
+    }
+    pre {
+      background: #f4f4f4;
+      padding: 5px;
+      overflow-x: auto;
+      font-size: 11px;
+    }
+    .empty-state {
+      text-align: center;
+      color: #999;
+      padding: 20px;
+    }
+  </style>
+</head>
+<body>
+  <div style="display: flex; justify-content: space-between; align-items: center;">
+    <h1>Captured 402 Requests</h1>
+    <button id="clear-button">Clear</button>
+  </div>
+  
+  <div id="list-view">
+    <ul id="request-list"></ul>
+    <div id="empty-state" class="empty-state" style="display: none;">No requests captured yet.</div>
+  </div>
+
+  <div id="detail-view">
+    <button id="back-button">&larr; Back</button>
+    <h2 style="font-size: 14px;">Request Details</h2>
+    <div id="detail-content"></div>
+  </div>
+
+  <script src="popup.js"></script>
+</body>
+</html>
