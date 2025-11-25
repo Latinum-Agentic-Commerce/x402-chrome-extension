@@ -1,0 +1,178 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Shopping Basket</title>
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            background-color: #f0f2f5;
+            margin: 0;
+        }
+
+        .basket-card {
+            background: white;
+            padding: 2rem;
+            border-radius: 12px;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+            width: 400px;
+        }
+
+        h1 {
+            color: #1e293b;
+            margin-top: 0;
+            border-bottom: 1px solid #eee;
+            padding-bottom: 1rem;
+        }
+
+        .item-list {
+            list-style: none;
+            padding: 0;
+            margin: 1rem 0;
+        }
+
+        .item {
+            display: flex;
+            align-items: center;
+            padding: 0.5rem 0;
+            border-bottom: 1px solid #f8f9fa;
+        }
+
+        .item-image {
+            width: 40px;
+            height: 40px;
+            border-radius: 4px;
+            margin-right: 1rem;
+            object-fit: cover;
+            background-color: #e2e8f0;
+        }
+
+        .item-details {
+            flex-grow: 1;
+        }
+
+        .item-name {
+            font-weight: 500;
+            display: block;
+        }
+
+        .item-price {
+            color: #64748b;
+            font-size: 0.9rem;
+        }
+
+        .total {
+            display: flex;
+            justify-content: space-between;
+            font-size: 1.25rem;
+            font-weight: bold;
+            margin: 1.5rem 0;
+            padding-top: 1rem;
+            border-top: 2px solid #eee;
+        }
+
+        button {
+            background-color: #3b82f6;
+            color: white;
+            border: none;
+            padding: 0.75rem 1.5rem;
+            border-radius: 6px;
+            font-size: 1rem;
+            cursor: pointer;
+            transition: background-color 0.2s;
+            width: 100%;
+        }
+
+        button:hover {
+            background-color: #2563eb;
+        }
+
+        #status {
+            margin-top: 1rem;
+            font-size: 0.875rem;
+            text-align: center;
+        }
+
+        .error {
+            color: #ef4444;
+        }
+    </style>
+</head>
+
+<body>
+    <div class="basket-card">
+        <h1>Your Basket</h1>
+        <ul class="item-list">
+            <li class="item">
+                <img src="https://placehold.co/40x40/3b82f6/white?text=SW" class="item-image" alt="Super Widget">
+                <div class="item-details">
+                    <span class="item-name">Super Widget</span>
+                    <span class="item-price">$99.99</span>
+                </div>
+            </li>
+            <li class="item">
+                <img src="https://placehold.co/40x40/10b981/white?text=MG" class="item-image" alt="Mega Gadget">
+                <div class="item-details">
+                    <span class="item-name">Mega Gadget</span>
+                    <span class="item-price">$49.50</span>
+                </div>
+            </li>
+            <li class="item">
+                <img src="https://placehold.co/40x40/f59e0b/white?text=PS" class="item-image" alt="Premium Service">
+                <div class="item-details">
+                    <span class="item-name">Premium Service</span>
+                    <span class="item-price">$19.99</span>
+                </div>
+            </li>
+        </ul>
+        <div class="total">
+            <span>Total</span>
+            <span>$169.48</span>
+        </div>
+        <button id="checkout-btn">Checkout</button>
+        <div id="status"></div>
+    </div>
+
+    <script>
+        const basketItems = [
+            { id: 1, name: 'Super Widget', price: 99.99, quantity: 1, image: 'https://placehold.co/40x40/3b82f6/white?text=SW' },
+            { id: 2, name: 'Mega Gadget', price: 49.50, quantity: 2, image: 'https://placehold.co/40x40/10b981/white?text=MG' },
+            { id: 3, name: 'Premium Service', price: 19.99, quantity: 1, image: 'https://placehold.co/40x40/f59e0b/white?text=PS' }
+        ];
+
+        document.getElementById('checkout-btn').addEventListener('click', async () => {
+            const statusDiv = document.getElementById('status');
+            statusDiv.textContent = 'Processing...';
+            statusDiv.className = '';
+
+            try {
+                const response = await fetch('/pay', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({ items: basketItems })
+                });
+
+                if (response.status === 402) {
+                    statusDiv.textContent = 'Payment Required (402) - Invoice Received!';
+                    statusDiv.className = 'error';
+                    console.log('402 Payment Required triggered');
+                } else {
+                    statusDiv.textContent = `Status: ${response.status}`;
+                }
+            } catch (error) {
+                statusDiv.textContent = 'Error: ' + error.message;
+                statusDiv.className = 'error';
+            }
+        });
+    </script>
+</body>
+
+</html>

@@ -1,87 +1,235 @@
 <!DOCTYPE html>
 <html>
+
 <head>
-  <title>x402 Requests</title>
+  <title>Payment Requests</title>
   <style>
     body {
-      width: 400px;
-      font-family: sans-serif;
-      padding: 10px;
+      width: 350px;
+      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+      margin: 0;
+      background-color: #f7f9fc;
+      color: #333;
     }
+
+    .header {
+      background-color: #fff;
+      padding: 15px;
+      border-bottom: 1px solid #e1e4e8;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+
     h1 {
       font-size: 16px;
-      margin-top: 0;
+      margin: 0;
+      color: #1a1f36;
     }
-    #request-list {
+
+    .clear-btn {
+      background: none;
+      border: none;
+      color: #6b7280;
+      cursor: pointer;
+      font-size: 12px;
+    }
+
+    .clear-btn:hover {
+      color: #ef4444;
+    }
+
+    #list-view {
+      padding: 10px;
+    }
+
+    .request-card {
+      background: white;
+      border-radius: 8px;
+      padding: 15px;
+      margin-bottom: 10px;
+      box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+      cursor: pointer;
+      transition: transform 0.1s;
+    }
+
+    .request-card:hover {
+      transform: translateY(-1px);
+      box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+    }
+
+    .card-title {
+      font-weight: 600;
+      font-size: 14px;
+      margin-bottom: 5px;
+      display: flex;
+      justify-content: space-between;
+    }
+
+    .card-total {
+      color: #059669;
+      font-weight: bold;
+    }
+
+    .card-meta {
+      font-size: 11px;
+      color: #6b7280;
+    }
+
+    .preview-list {
       list-style: none;
       padding: 0;
-      max-height: 300px;
-      overflow-y: auto;
-    }
-    .request-item {
-      border-bottom: 1px solid #eee;
-      padding: 8px 0;
-      cursor: pointer;
-    }
-    .request-item:hover {
-      background-color: #f9f9f9;
-    }
-    .request-url {
-      font-weight: bold;
+      margin: 5px 0;
       font-size: 12px;
-      word-break: break-all;
+      color: #4b5563;
     }
-    .request-time {
+
+    .preview-list li {
+      margin-bottom: 2px;
+      display: flex;
+      align-items: center;
+    }
+
+    .preview-qty {
+      background: #e5e7eb;
+      color: #374151;
       font-size: 10px;
-      color: #666;
+      padding: 1px 4px;
+      border-radius: 4px;
+      margin-right: 6px;
+      font-weight: 600;
     }
-    .x402-badge {
-      background-color: #d4edda;
-      color: #155724;
-      padding: 2px 5px;
-      border-radius: 3px;
-      font-size: 10px;
-      margin-left: 5px;
+
+    .preview-more {
+      color: #9ca3af;
+      font-style: italic;
+      margin-top: 4px;
     }
+
     #detail-view {
       display: none;
-      border-top: 1px solid #ccc;
-      padding-top: 10px;
-      margin-top: 10px;
+      background: white;
+      min-height: 100vh;
+      display: flex;
+      /* Hidden by default, toggled via JS */
+      flex-direction: column;
     }
-    #back-button {
-      margin-bottom: 10px;
+
+    .detail-header {
+      padding: 15px;
+      border-bottom: 1px solid #eee;
+      display: flex;
+      align-items: center;
     }
-    pre {
-      background: #f4f4f4;
-      padding: 5px;
-      overflow-x: auto;
-      font-size: 11px;
+
+    .back-btn {
+      background: none;
+      border: none;
+      font-size: 18px;
+      cursor: pointer;
+      margin-right: 10px;
+      color: #374151;
     }
+
+    .invoice-content {
+      padding: 20px;
+      flex-grow: 1;
+    }
+
+    .invoice-total {
+      text-align: center;
+      margin-bottom: 20px;
+    }
+
+    .big-price {
+      font-size: 32px;
+      font-weight: bold;
+      color: #111;
+    }
+
+    .invoice-items {
+      list-style: disc;
+      /* Bullet list */
+      padding-left: 20px;
+      /* Indent for bullets */
+      margin: 0;
+      border-top: 1px solid #eee;
+    }
+
+    .invoice-item {
+      padding: 10px 0;
+      border-bottom: 1px solid #eee;
+      font-size: 13px;
+    }
+
+    .invoice-item-img {
+      width: 32px;
+      height: 32px;
+      border-radius: 4px;
+      margin-right: 10px;
+      object-fit: cover;
+      background-color: #f3f4f6;
+    }
+
+    .pay-btn {
+      background-color: #2563eb;
+      color: white;
+      border: none;
+      width: 100%;
+      padding: 12px;
+      font-size: 16px;
+      font-weight: 600;
+      cursor: pointer;
+      margin-top: auto;
+      /* Push to bottom if container has height */
+    }
+
+    .pay-btn:hover {
+      background-color: #1d4ed8;
+    }
+
     .empty-state {
       text-align: center;
-      color: #999;
-      padding: 20px;
+      padding: 40px 20px;
+      color: #9ca3af;
+      font-size: 14px;
+    }
+
+    /* Utility to hide elements */
+    .hidden {
+      display: none !important;
     }
   </style>
 </head>
+
 <body>
-  <div style="display: flex; justify-content: space-between; align-items: center;">
-    <h1>Captured 402 Requests</h1>
-    <button id="clear-button">Clear</button>
-  </div>
-  
   <div id="list-view">
-    <ul id="request-list"></ul>
-    <div id="empty-state" class="empty-state" style="display: none;">No requests captured yet.</div>
+    <div class="header">
+      <h1>Payment Requests</h1>
+      <button id="clear-button" class="clear-btn">Clear</button>
+    </div>
+    <div id="request-list"></div>
+    <div id="empty-state" class="empty-state hidden">No pending payments</div>
   </div>
 
-  <div id="detail-view">
-    <button id="back-button">&larr; Back</button>
-    <h2 style="font-size: 14px;">Request Details</h2>
-    <div id="detail-content"></div>
+  <div id="detail-view" class="hidden">
+    <div class="detail-header">
+      <button id="back-button" class="back-btn">&larr;</button>
+      <h1 style="font-size: 16px;">Invoice Details</h1>
+    </div>
+    <div class="invoice-content">
+      <div class="invoice-total">
+        <div style="font-size: 12px; color: #666; margin-bottom: 5px;">Total Amount</div>
+        <div class="big-price" id="detail-total">$0.00</div>
+      </div>
+      <ul class="invoice-items" id="detail-items">
+        <!-- Items go here -->
+      </ul>
+    </div>
+    <button class="pay-btn">Pay Now</button>
   </div>
 
   <script src="popup.js"></script>
 </body>
+
 </html>

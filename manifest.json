@@ -5,7 +5,10 @@
     "description": "Captures HTTP 402 requests and displays them.",
     "permissions": [
         "webRequest",
-        "storage"
+        "storage",
+        "notifications",
+        "scripting",
+        "activeTab"
     ],
     "host_permissions": [
         "<all_urls>"
