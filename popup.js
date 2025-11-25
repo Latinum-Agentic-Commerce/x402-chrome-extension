@@ -1,7 +1,6 @@
 document.addEventListener('DOMContentLoaded', () => {
     const requestList = document.getElementById('request-list');
     const emptyState = document.getElementById('empty-state');
-    const clearButton = document.getElementById('clear-button');
     const listView = document.getElementById('list-view');
     const detailView = document.getElementById('detail-view');
     const backButton = document.getElementById('back-button');
@@ -112,16 +111,22 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     function getItemsFromRequest(req) {
-        // Try to find X-Invoice-Items header
+        // First try X-Invoice-Items header (backwards compat)
         const header = req.responseHeaders.find(h => h.name.toLowerCase() === 'x-invoice-items');
         if (header) {
             try {
                 return JSON.parse(header.value);
             } catch (e) {
-                console.error("Failed to parse invoice items", e);
+                console.error("Failed to parse invoice items from header", e);
             }
         }
-        // Fallback if no items found
+
+        // Try to parse from x402 PaymentRequirements body (if stored)
+        if (req.paymentRequirements && req.paymentRequirements.extra) {
+            return req.paymentRequirements.extra;
+        }
+
+        // Fallback
         return [{ name: 'Unknown Item', price: 0, quantity: 1 }];
     }
 
