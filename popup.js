@@ -53,7 +53,32 @@ document.addEventListener('DOMContentLoaded', () => {
 
                     const cardTitle = document.createElement('div');
                     cardTitle.className = 'card-title';
-                    cardTitle.innerHTML = '<span>Payment Request</span><span class="card-total">$' + total.toFixed(2) + '</span>';
+
+                    const titleSpan = document.createElement('span');
+                    titleSpan.textContent = 'Payment Request';
+
+                    const rightSide = document.createElement('div');
+                    rightSide.style.display = 'flex';
+                    rightSide.style.alignItems = 'center';
+
+                    const totalSpan = document.createElement('span');
+                    totalSpan.className = 'card-total';
+                    totalSpan.textContent = '$' + total.toFixed(2);
+
+                    // Add delete button
+                    const deleteBtn = document.createElement('button');
+                    deleteBtn.className = 'delete-btn';
+                    deleteBtn.innerHTML = '<svg width="12" height="12" viewBox="0 0 16 16" fill="currentColor"><path d="M5.5 5.5A.5.5 0 0 1 6 6v6a.5.5 0 0 1-1 0V6a.5.5 0 0 1 .5-.5zm2.5 0a.5.5 0 0 1 .5.5v6a.5.5 0 0 1-1 0V6a.5.5 0 0 1 .5-.5zm3 .5a.5.5 0 0 0-1 0v6a.5.5 0 0 0 1 0V6z"/><path fill-rule="evenodd" d="M14.5 3a1 1 0 0 1-1 1H13v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V4h-.5a1 1 0 0 1-1-1V2a1 1 0 0 1 1-1H6a1 1 0 0 1 1-1h2a1 1 0 0 1 1 1h3.5a1 1 0 0 1 1 1v1zM4.118 4 4 4.059V13a1 1 0 0 0 1 1h6a1 1 0 0 0 1-1V4.059L11.882 4H4.118zM2.5 3V2h11v1h-11z"/></svg>';
+                    deleteBtn.addEventListener('click', (e) => {
+                        e.stopPropagation(); // Prevent card click
+                        deleteRequest(result.requests.length - 1 - index); // Original index
+                    });
+
+                    rightSide.appendChild(totalSpan);
+                    rightSide.appendChild(deleteBtn);
+
+                    cardTitle.appendChild(titleSpan);
+                    cardTitle.appendChild(rightSide);
 
                     const cardPreview = document.createElement('div');
                     cardPreview.className = 'card-preview';
@@ -75,6 +100,14 @@ document.addEventListener('DOMContentLoaded', () => {
                     requestList.appendChild(div);
                 });
             }
+        });
+    }
+
+    function deleteRequest(index) {
+        chrome.storage.local.get({ requests: [] }, (result) => {
+            const requests = result.requests;
+            requests.splice(index, 1);
+            chrome.storage.local.set({ requests }, renderList);
         });
     }
 
@@ -181,10 +214,6 @@ document.addEventListener('DOMContentLoaded', () => {
     backButton.addEventListener('click', () => {
         detailView.classList.add('hidden');
         listView.classList.remove('hidden');
-    });
-
-    clearButton.addEventListener('click', () => {
-        chrome.storage.local.set({ requests: [] }, renderList);
     });
 
     renderList();
