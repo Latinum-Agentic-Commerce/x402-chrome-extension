@@ -3,6 +3,16 @@ const { paymentMiddleware } = require('x402-express');
 const path = require('path');
 const cors = require('cors');
 require('dotenv').config();
+// UUID generator for payment IDs
+const { v4: uuidv4 } = require('uuid');
+// In‑memory store for pending payments (demo only)
+const pendingPayments = {};
+// AJV validator for basket schema (v2)
+const Ajv = require('ajv');
+const ajv = new Ajv();
+// Load the basket JSON‑Schema from the cloned x402 v2 repository
+const basketSchema = require('./x402_v2/specs/schemes/basket.schema.json');
+const validateBasket = ajv.compile(basketSchema);
 
 const app = express();
 const PORT = process.env.PORT || 3001;
@@ -61,25 +71,89 @@ app.post('/pay', (req, res) => {
     console.log('✅ Payment request received for', total, 'USD');
     console.log('Items:', items.map(i => i.name).join(', '));
 
-    // Build PaymentRequirements object (simplified)
+    const paymentId = uuidv4();
+    const maxTimeoutSeconds = 600;
+    const expiresAt = Date.now() + maxTimeoutSeconds * 1000; // Convert to milliseconds
+    const paymentStatusUrl = `${req.protocol}://${req.get('host')}/payment-status/${paymentId}`;
+
+    // Store pending payment details
+    pendingPayments[paymentId] = {
+        id: paymentId,
+        items: items,
+        total: total,
+        status: 'pending', // Initial status
+        createdAt: Date.now(),
+        expiresAt: expiresAt,
+        merchantAddress: MERCHANT_ADDRESS,
+    };
+
+    // Transform items to basket format (schema-compliant)
+    // The basket schema requires price to be a string in atomic units
+    const basket = items.map(item => ({
+        name: item.name,
+        price: typeof item.price === 'string' ? item.price : item.price.toString(),
+        quantity: item.quantity || 1,
+        ...(item.tax && { tax: item.tax.toString() }),
+        ...(item.discount && { discount: item.discount.toString() }),
+        ...(item.metadata && { metadata: item.metadata })
+    }));
+
+    // Validate basket against schema
+    const isBasketValid = validateBasket(basket);
+    if (!isBasketValid) {
+        console.warn('⚠️ Basket validation failed:', validateBasket.errors);
+    }
+
+    // Build PaymentRequirements object (v2)
     const paymentRequirements = {
         scheme: 'exact',
         network: 'base-sepolia',
         maxAmountRequired: (total * 1000000).toString(), // USDC atomic units (example)
-        resource: req.protocol + '://' + req.get('host') + req.originalUrl,
+        resource: `${req.protocol}://${req.get('host')}${req.originalUrl}?paymentId=${paymentId}`,
         description: 'Shopping cart payment',
         mimeType: 'application/json',
+        // New structured basket (v2)
+        basket: basket,               // <-- transformed to conform to basket schema
+        // Keep legacy field for v1 compatibility
+        extra: items,
         payTo: MERCHANT_ADDRESS,
         asset: '0x036CbD53842c5426634e7929541eC2318f3dCF7e',
-        maxTimeoutSeconds: 600,
-        x402Version: '1.0',
-        extra: items // include invoice items
+        maxTimeoutSeconds: maxTimeoutSeconds,
+        x402Version: '2.0',
+        paymentId: paymentId,
+        expiresAt: new Date(expiresAt).toISOString(),
+        paymentStatusUrl: paymentStatusUrl
     };
 
     // Set header for extension compatibility
     res.setHeader('X-Invoice-Items', JSON.stringify(items));
     res.setHeader('WWW-Authenticate', 'x402');
     res.status(402).json(paymentRequirements);
+});
+
+// Payment status endpoint
+app.get('/payment-status/:paymentId', (req, res) => {
+    const { paymentId } = req.params;
+    const payment = pendingPayments[paymentId];
+
+    if (!payment) {
+        return res.status(404).json({ error: 'Payment not found' });
+    }
+
+    // In a real application, you would check the blockchain for payment confirmation
+    // For this demo, we'll just return the stored status.
+    // You might also update the status here if a payment was confirmed externally.
+
+    res.json({
+        paymentId: payment.id,
+        status: payment.status,
+        total: payment.total,
+        items: payment.items,
+        createdAt: payment.createdAt,
+        expiresAt: payment.expiresAt,
+        merchantAddress: payment.merchantAddress,
+        // Add any other relevant payment details
+    });
 });
 
 // Error handling

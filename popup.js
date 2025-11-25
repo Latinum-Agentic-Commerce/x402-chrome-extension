@@ -111,23 +111,34 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     function getItemsFromRequest(req) {
-        // First try X-Invoice-Items header (backwards compat)
-        const header = req.responseHeaders.find(h => h.name.toLowerCase() === 'x-invoice-items');
-        if (header) {
-            try {
-                return JSON.parse(header.value);
-            } catch (e) {
-                console.error("Failed to parse invoice items from header", e);
+        // STRICT MODE: Only read 'basket' from the response body.
+        // No fallbacks to 'extra' or 'X-Invoice-Items'.
+
+        console.log('getItemsFromRequest called for:', req.url);
+        console.log('Request object:', req);
+
+        if (!req.responseBody) {
+            console.error('No response body found for request:', req.url);
+            console.error('Request has source:', req.source);
+            return []; // Or throw error? Returning empty array will show $0.00
+        }
+
+        try {
+            console.log('Parsing responseBody:', req.responseBody.substring(0, 200));
+            const body = JSON.parse(req.responseBody);
+            console.log('Parsed body:', body);
+
+            if (body.basket && Array.isArray(body.basket)) {
+                console.log('Found basket with', body.basket.length, 'items:', body.basket);
+                return body.basket;
+            } else {
+                console.error('Response body does not contain a valid basket array:', body);
+                return [];
             }
+        } catch (e) {
+            console.error('Failed to parse response body JSON:', e);
+            return [];
         }
-
-        // Try to parse from x402 PaymentRequirements body (if stored)
-        if (req.paymentRequirements && req.paymentRequirements.extra) {
-            return req.paymentRequirements.extra;
-        }
-
-        // Fallback
-        return [{ name: 'Unknown Item', price: 0, quantity: 1 }];
     }
 
     function showDetail(req, items, total) {

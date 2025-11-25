@@ -13,6 +13,26 @@
     "host_permissions": [
         "<all_urls>"
     ],
+    "content_scripts": [
+        {
+            "matches": [
+                "<all_urls>"
+            ],
+            "js": [
+                "interceptor_main.js"
+            ],
+            "world": "MAIN"
+        },
+        {
+            "matches": [
+                "<all_urls>"
+            ],
+            "js": [
+                "interceptor_iso.js"
+            ],
+            "world": "ISOLATED"
+        }
+    ],
     "background": {
         "service_worker": "background.js"
     },
