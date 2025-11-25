@@ -147,30 +147,21 @@
         ];
 
         document.getElementById('checkout-btn').addEventListener('click', async () => {
-            const statusDiv = document.getElementById('status');
-            statusDiv.textContent = 'Processing...';
-            statusDiv.className = '';
-
             try {
-                const response = await fetch('/pay', {
+                // Trigger the 402 request silently
+                await fetch('/pay', {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json'
                     },
                     body: JSON.stringify({ items: basketItems })
                 });
-
-                if (response.status === 402) {
-                    statusDiv.textContent = 'Payment Required (402) - Invoice Received!';
-                    statusDiv.className = 'error';
-                    console.log('402 Payment Required triggered');
-                } else {
-                    statusDiv.textContent = `Status: ${response.status}`;
-                }
             } catch (error) {
-                statusDiv.textContent = 'Error: ' + error.message;
-                statusDiv.className = 'error';
+                console.error('Payment error:', error);
             }
+
+            // Redirect to checkout page
+            window.location.href = '/checkout';
         });
     </script>
 </body>

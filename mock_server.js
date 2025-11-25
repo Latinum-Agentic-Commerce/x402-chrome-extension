@@ -4,48 +4,60 @@ const fs = require('fs');
 const path = require('path');
 
 const server = http.createServer((req, res) => {
-    if (req.url === '/pay') {
+    if (req.url === '/pay' && req.method === 'POST') {
         let body = '';
         req.on('data', chunk => {
             body += chunk.toString();
         });
+
         req.on('end', () => {
             let items = [];
             try {
                 const data = JSON.parse(body);
                 items = data.items || [];
             } catch (e) {
-                console.error("Failed to parse body", e);
+                console.error('Failed to parse request body');
             }
 
+            // Always return 402 for /pay
             res.writeHead(402, {
                 'Content-Type': 'application/json',
                 'WWW-Authenticate': 'x402 token="abc12345"',
                 'X-Custom-Header': 'test-value',
-                'X-Invoice-Items': JSON.stringify(items) // Attach items to header
+                'X-Invoice-Items': JSON.stringify(items)
             });
             res.end(JSON.stringify({
                 error: 'Payment Required',
-                invoice: {
-                    items: items,
-                    total: items.reduce((sum, item) => sum + item.price, 0)
-                }
+                protocol: 'x402',
+                items: items
             }));
-            console.log('Responded with 402 to /pay with items:', items.length);
+        });
+    } else if (req.url === '/checkout' || req.url === '/checkout.html') {
+        // Serve checkout page
+        const filePath = path.join(__dirname, 'checkout.html');
+        fs.readFile(filePath, (err, data) => {
+            if (err) {
+                res.writeHead(404);
+                res.end('Checkout page not found');
+            } else {
+                res.writeHead(200, { 'Content-Type': 'text/html' });
+                res.end(data);
+            }
         });
     } else if (req.url === '/' || req.url === '/index.html') {
-        fs.readFile(path.join(__dirname, 'index.html'), (err, data) => {
+        const filePath = path.join(__dirname, 'index.html');
+        fs.readFile(filePath, (err, data) => {
             if (err) {
-                res.writeHead(500);
-                res.end('Error loading index.html');
-                return;
+                res.writeHead(404);
+                res.end('File not found');
+            } else {
+                res.writeHead(200, { 'Content-Type': 'text/html' });
+                res.end(data);
             }
-            res.writeHead(200, { 'Content-Type': 'text/html' });
-            res.end(data);
         });
     } else {
         res.writeHead(404);
-        res.end('Not Found');
+        res.end('Not found');
     }
 });
 
