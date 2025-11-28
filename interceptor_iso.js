@@ -22,3 +22,15 @@ window.addEventListener('message', (event) => {
 });
 
 console.log('[x402] Event listener registered for X402_CAPTURED messages');
+
+// Listen for messages from background script
+chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
+    if (message.type === 'X402_BASKET_UPDATED') {
+        console.log('[x402] Received basket update from background:', message.data.url);
+        // Forward to MAIN world
+        window.postMessage({
+            type: 'X402_BASKET_UPDATED',
+            data: message.data
+        }, '*');
+    }
+});

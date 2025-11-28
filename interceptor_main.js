@@ -147,3 +147,43 @@ checkForEmbeddedX402Data();
 // Also check after a short delay in case the object is set asynchronously
 setTimeout(checkForEmbeddedX402Data, 100);
 setTimeout(checkForEmbeddedX402Data, 500);
+
+// AI Browser Integration
+// Expose captured baskets to the page context for automated browsers (e.g. Atlas)
+window.__X402_BASKETS__ = [];
+
+window.addEventListener('message', (event) => {
+    // We only accept messages from ourselves (forwarded from isolated world)
+    if (event.source !== window) return;
+
+    if (event.data.type === 'X402_BASKET_UPDATED') {
+        const requestData = event.data.data;
+        console.log('[x402] Updating global basket state for:', requestData.url);
+
+        // Update global state
+        // Check if we already have this request (deduplication)
+        const existingIndex = window.__X402_BASKETS__.findIndex(r =>
+            (requestData.requestId && r.requestId === requestData.requestId) ||
+            (r.url === requestData.url && r.method === requestData.method && Math.abs(r.timeStamp - requestData.timeStamp) < 5000)
+        );
+
+        if (existingIndex !== -1) {
+            window.__X402_BASKETS__[existingIndex] = requestData;
+        } else {
+            window.__X402_BASKETS__.push(requestData);
+            // Dispatch event for NEW capture
+            window.dispatchEvent(new CustomEvent('x402-basket-captured', { detail: requestData }));
+        }
+
+        // Dispatch general update event
+        window.dispatchEvent(new CustomEvent('x402-basket-updated', { detail: window.__X402_BASKETS__ }));
+    }
+});
+
+console.log('[x402] AI Browser integration ready: window.__X402_BASKETS__ exposed');
+
+// Inject a meta tag to inform AI agents about the interface
+const meta = document.createElement('meta');
+meta.name = 'x402-agent-interface';
+meta.content = 'Payment requests are available in window.__X402_BASKETS__. Listen for "x402-basket-captured" events.';
+document.head.appendChild(meta);

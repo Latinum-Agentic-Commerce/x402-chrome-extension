@@ -51,6 +51,13 @@ function saveRequest(requestData) {
             requests[existingIndex] = requestData;
             chrome.storage.local.set({ requests }, () => {
                 console.log('[background] Updated request entry');
+                // Broadcast update to the specific tab
+                if (requestData.tabId) {
+                    chrome.tabs.sendMessage(requestData.tabId, {
+                        type: 'X402_BASKET_UPDATED',
+                        data: requestData
+                    }).catch(err => console.log('[background] Could not send update to tab (tab might be closed or no content script):', err));
+                }
             });
         } else {
             // New request
@@ -61,6 +68,14 @@ function saveRequest(requestData) {
                     console.log('[background] Response body preview:', requestData.responseBody.substring(0, 200));
                 }
                 animateBadge(requests.length);
+
+                // Broadcast update to the specific tab
+                if (requestData.tabId) {
+                    chrome.tabs.sendMessage(requestData.tabId, {
+                        type: 'X402_BASKET_UPDATED',
+                        data: requestData
+                    }).catch(err => console.log('[background] Could not send update to tab (tab might be closed or no content script):', err));
+                }
             });
         }
 
