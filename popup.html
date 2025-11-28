@@ -199,6 +199,40 @@
       background-color: #1d4ed8;
     }
 
+    .details-btn {
+      background-color: #f3f4f6;
+      color: #374151;
+      border: 1px solid #d1d5db;
+      width: 100%;
+      padding: 10px;
+      font-size: 14px;
+      font-weight: 500;
+      cursor: pointer;
+      margin-top: 15px;
+      border-radius: 6px;
+      transition: all 0.2s;
+    }
+
+    .details-btn:hover {
+      background-color: #e5e7eb;
+      border-color: #9ca3af;
+    }
+
+    .json-display {
+      background: #1e293b;
+      color: #e2e8f0;
+      padding: 12px;
+      border-radius: 6px;
+      font-family: 'Monaco', 'Courier New', monospace;
+      font-size: 11px;
+      overflow-x: auto;
+      margin-top: 10px;
+      white-space: pre-wrap;
+      word-wrap: break-word;
+      max-height: 300px;
+      overflow-y: auto;
+    }
+
     .empty-state {
       text-align: center;
       padding: 40px 20px;
@@ -209,6 +243,35 @@
     /* Utility to hide elements */
     .hidden {
       display: none !important;
+    }
+
+    /* Animation for new cards */
+    @keyframes slideInFromTop {
+      0% {
+        opacity: 0;
+        transform: translateY(-20px) scale(0.95);
+      }
+
+      100% {
+        opacity: 1;
+        transform: translateY(0) scale(1);
+      }
+    }
+
+    @keyframes pulse {
+
+      0%,
+      100% {
+        box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+      }
+
+      50% {
+        box-shadow: 0 4px 12px rgba(59, 130, 246, 0.4);
+      }
+    }
+
+    .request-card.new-card {
+      animation: slideInFromTop 0.4s ease-out, pulse 1s ease-in-out 0.4s;
     }
   </style>
 </head>
@@ -235,6 +298,8 @@
       <ul class="invoice-items" id="detail-items">
         <!-- Items go here -->
       </ul>
+      <button class="details-btn" id="show-json-btn">Show Full Request JSON</button>
+      <div id="json-display" class="json-display hidden"></div>
     </div>
     <button class="pay-btn">Pay Now</button>
   </div>

@@ -1,0 +1,84 @@
+{
+  "description": "Example of x402 v2 basket extension response",
+  "usage": "Server should return this JSON with HTTP 402 status code",
+  "response": {
+    "basket": [
+      {
+        "id": "api-call-001",
+        "name": "Weather API Call - Premium Tier",
+        "price": "1000000",
+        "quantity": 5,
+        "tax": "50000",
+        "discount": "100000",
+        "metadata": {
+          "sku": "WEATHER-PREMIUM-001",
+          "tier": "premium",
+          "endpoint": "/weather/forecast"
+        }
+      },
+      {
+        "id": "api-call-002",
+        "name": "Traffic API Call - Standard Tier",
+        "price": "500000",
+        "quantity": 10,
+        "tax": "25000",
+        "discount": "0",
+        "metadata": {
+          "sku": "TRAFFIC-STD-001",
+          "tier": "standard",
+          "endpoint": "/traffic/realtime"
+        }
+      },
+      {
+        "id": "storage-fee-001",
+        "name": "Data Storage Fee",
+        "price": "200000",
+        "quantity": 1,
+        "metadata": {
+          "sku": "STORAGE-001",
+          "size": "5GB",
+          "period": "monthly"
+        }
+      }
+    ]
+  },
+  "calculations": {
+    "item1": {
+      "description": "Weather API calls",
+      "basePrice": "$1.00 per call",
+      "quantity": 5,
+      "subtotal": "$5.00",
+      "tax": "$0.05",
+      "discount": "$0.10",
+      "total": "$4.95"
+    },
+    "item2": {
+      "description": "Traffic API calls",
+      "basePrice": "$0.50 per call",
+      "quantity": 10,
+      "subtotal": "$5.00",
+      "tax": "$0.025",
+      "discount": "$0.00",
+      "total": "$5.025"
+    },
+    "item3": {
+      "description": "Storage fee",
+      "basePrice": "$0.20",
+      "quantity": 1,
+      "subtotal": "$0.20",
+      "tax": "$0.00",
+      "discount": "$0.00",
+      "total": "$0.20"
+    },
+    "grandTotal": "$10.175"
+  },
+  "notes": [
+    "All prices are in the smallest unit of the asset (assuming 6 decimals for USDC)",
+    "1000000 = $1.00 USD",
+    "Tax is applied per line item",
+    "Discount is applied per line item",
+    "Formula: Total = (price × quantity) + tax - discount",
+    "Item IDs are optional but recommended for tracking",
+    "Metadata can contain any additional information"
+  ]
+}

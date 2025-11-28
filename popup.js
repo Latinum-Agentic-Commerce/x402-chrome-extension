@@ -1,4 +1,7 @@
 document.addEventListener('DOMContentLoaded', () => {
+    // Clear badge when popup is opened
+    chrome.action.setBadgeText({ text: '' });
+
     const requestList = document.getElementById('request-list');
     const emptyState = document.getElementById('empty-state');
     const listView = document.getElementById('list-view');
@@ -7,7 +10,21 @@ document.addEventListener('DOMContentLoaded', () => {
     const detailTotal = document.getElementById('detail-total');
     const detailItems = document.getElementById('detail-items');
 
-    function renderList() {
+    let lastRequestCount = 0;
+
+    // Listen for storage changes to update in real-time
+    chrome.storage.onChanged.addListener((changes, namespace) => {
+        if (namespace === 'local' && changes.requests) {
+            const newRequests = changes.requests.newValue || [];
+            const hasNewRequest = newRequests.length > lastRequestCount;
+            lastRequestCount = newRequests.length;
+
+            // Re-render with animation flag for new items
+            renderList(hasNewRequest);
+        }
+    });
+
+    function renderList(animateNew = false) {
         chrome.storage.local.get({ requests: [] }, (result) => {
             const requests = result.requests.reverse(); // Newest first
             requestList.innerHTML = '';
@@ -22,6 +39,11 @@ document.addEventListener('DOMContentLoaded', () => {
 
                     const div = document.createElement('div');
                     div.className = 'request-card';
+
+                    // Animate the first card if it's new
+                    if (animateNew && index === 0) {
+                        div.classList.add('new-card');
+                    }
 
                     // Format date
                     const date = new Date(req.timeStamp);
@@ -53,8 +75,26 @@ document.addEventListener('DOMContentLoaded', () => {
                     const cardTitle = document.createElement('div');
                     cardTitle.className = 'card-title';
 
+                    const titleContainer = document.createElement('div');
                     const titleSpan = document.createElement('span');
                     titleSpan.textContent = 'Payment Request';
+                    titleSpan.style.fontWeight = '600';
+
+                    const siteSpan = document.createElement('div');
+                    siteSpan.style.fontSize = '11px';
+                    siteSpan.style.color = '#6b7280';
+                    siteSpan.style.fontWeight = '400';
+                    siteSpan.style.marginTop = '2px';
+                    try {
+                        const hostname = new URL(req.url).hostname;
+                        const method = req.method || 'GET';
+                        siteSpan.textContent = `${method} ${hostname}`;
+                    } catch (e) {
+                        siteSpan.textContent = req.url;
+                    }
+
+                    titleContainer.appendChild(titleSpan);
+                    titleContainer.appendChild(siteSpan);
 
                     const rightSide = document.createElement('div');
                     rightSide.style.display = 'flex';
@@ -76,11 +116,40 @@ document.addEventListener('DOMContentLoaded', () => {
                     rightSide.appendChild(totalSpan);
                     rightSide.appendChild(deleteBtn);
 
-                    cardTitle.appendChild(titleSpan);
+                    cardTitle.appendChild(titleContainer);
                     cardTitle.appendChild(rightSide);
+
+                    // Extract description from the request
+                    let description = null;
+                    try {
+                        if (req.responseBody) {
+                            const body = JSON.parse(req.responseBody);
+                            if (body.accepts && body.accepts[0] && body.accepts[0].description) {
+                                description = body.accepts[0].description;
+                            }
+                        }
+                    } catch (e) {
+                        // Ignore parsing errors
+                    }
 
                     const cardPreview = document.createElement('div');
                     cardPreview.className = 'card-preview';
+
+                    // Add description if available
+                    if (description) {
+                        const descDiv = document.createElement('div');
+                        descDiv.style.fontSize = '12px';
+                        descDiv.style.color = '#4b5563';
+                        descDiv.style.marginBottom = '8px';
+                        descDiv.style.fontStyle = 'italic';
+                        descDiv.style.padding = '6px 8px';
+                        descDiv.style.backgroundColor = '#f9fafb';
+                        descDiv.style.borderRadius = '4px';
+                        descDiv.style.borderLeft = '3px solid #3b82f6';
+                        descDiv.textContent = description;
+                        cardPreview.appendChild(descDiv);
+                    }
+
                     cardPreview.appendChild(previewList);
 
                     const cardMeta = document.createElement('div');
@@ -111,34 +180,99 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     function getItemsFromRequest(req) {
-        // STRICT MODE: Only read 'basket' from the response body.
-        // No fallbacks to 'extra' or 'X-Invoice-Items'.
-
         console.log('getItemsFromRequest called for:', req.url);
         console.log('Request object:', req);
 
-        if (!req.responseBody) {
-            console.error('No response body found for request:', req.url);
-            console.error('Request has source:', req.source);
-            return []; // Or throw error? Returning empty array will show $0.00
-        }
+        // Try response body first (from fetch interceptor)
+        if (req.responseBody) {
+            try {
+                console.log('Parsing responseBody:', req.responseBody.substring(0, 200));
+                const body = JSON.parse(req.responseBody);
+                console.log('Parsed body:', body);
 
-        try {
-            console.log('Parsing responseBody:', req.responseBody.substring(0, 200));
-            const body = JSON.parse(req.responseBody);
-            console.log('Parsed body:', body);
+                // Handle x402 v2 basket extension (https://x402.org/spec/v2/basket.schema.json)
+                // This is a proposed extension to add itemized baskets to x402
+                // PRIORITY: Check basket first since it provides more detailed item information
+                if (body.basket && Array.isArray(body.basket)) {
+                    console.log('[x402 basket] Found basket array with', body.basket.length, 'items');
+                    return body.basket.map(item => {
+                        // Parse price from smallest units (string) to decimal
+                        const basePrice = parseFloat(item.price || 0) / 100; // Convert from cents
+                        const quantity = item.quantity || 1;
+                        const tax = parseFloat(item.tax || 0) / 100;
+                        const discount = parseFloat(item.discount || 0) / 100;
 
-            if (body.basket && Array.isArray(body.basket)) {
-                console.log('Found basket with', body.basket.length, 'items:', body.basket);
-                return body.basket;
-            } else {
-                console.error('Response body does not contain a valid basket array:', body);
-                return [];
+                        // Calculate final price: (basePrice * quantity) + tax - discount
+                        const totalPrice = (basePrice * quantity) + tax - discount;
+
+                        return {
+                            id: item.id,
+                            name: item.name,
+                            price: totalPrice / quantity, // Price per unit after tax/discount
+                            quantity: quantity,
+                            image_urls: item.image_urls || null,
+                            // Store original basket metadata
+                            _basket: {
+                                basePrice: basePrice,
+                                tax: tax,
+                                discount: discount,
+                                metadata: item.metadata
+                            }
+                        };
+                    });
+                }
+
+                // Handle x402 standard protocol format (accepts array)
+                // This is the official x402 specification format
+                // Fallback to this if no basket is present
+                if (body.accepts && Array.isArray(body.accepts)) {
+                    console.log('[x402 standard] Found accepts array with', body.accepts.length, 'payment options');
+                    // Convert x402 payment requirements to displayable items
+                    return body.accepts.map(accept => ({
+                        name: accept.description || 'Payment Required',
+                        price: parseFloat(accept.maxAmountRequired || 0) / 1000000, // Convert from smallest units (assuming 6 decimals for USDC)
+                        quantity: 1,
+                        image_urls: null,
+                        // Store original x402 payment requirement data
+                        _x402: {
+                            network: accept.network,
+                            asset: accept.asset,
+                            payTo: accept.payTo,
+                            currency: accept.extra?.name || 'USDC',
+                            scheme: accept.scheme,
+                            maxTimeoutSeconds: accept.maxTimeoutSeconds
+                        }
+                    }));
+                }
+
+
+                console.warn('Response body does not contain a valid basket or accepts array');
+            } catch (e) {
+                console.error('Failed to parse response body JSON:', e);
             }
-        } catch (e) {
-            console.error('Failed to parse response body JSON:', e);
-            return [];
         }
+
+        // Fallback: Try X-Invoice-Items header (for webRequest captures)
+        if (req.responseHeaders) {
+            const invoiceHeader = req.responseHeaders.find(h =>
+                h.name.toLowerCase() === 'x-invoice-items'
+            );
+
+            if (invoiceHeader && invoiceHeader.value) {
+                try {
+                    console.log('Using X-Invoice-Items header as fallback');
+                    const items = JSON.parse(invoiceHeader.value);
+                    console.log('Parsed items from header:', items);
+                    return Array.isArray(items) ? items : [];
+                } catch (e) {
+                    console.error('Failed to parse X-Invoice-Items header:', e);
+                }
+            }
+        }
+
+        console.error('No response body or X-Invoice-Items header found for:', req.url);
+        console.error('Request source:', req.source);
+        return []; // Empty basket - will show $0.00
     }
 
     function showDetail(req, items, total) {
@@ -154,8 +288,34 @@ document.addEventListener('DOMContentLoaded', () => {
             li.className = 'invoice-item';
 
             let imageHtml = '';
-            if (item.image) {
-                imageHtml = `<img src="${item.image}" class="invoice-item-img" alt="${item.name}">`;
+            if (item.image_urls && item.image_urls[0]) {
+                imageHtml = `<img src="${item.image_urls[0]}" class="invoice-item-img" alt="${item.name}">`;
+            }
+
+            // Build price breakdown for basket items
+            let priceHtml = `<div style="font-weight: 500;">$${(item.price * qty).toFixed(2)}</div>`;
+
+            if (item._basket) {
+                // Show detailed breakdown for basket items
+                const breakdown = [];
+                if (item._basket.basePrice) {
+                    breakdown.push(`Base: $${(item._basket.basePrice * qty).toFixed(2)}`);
+                }
+                if (item._basket.tax > 0) {
+                    breakdown.push(`Tax: $${item._basket.tax.toFixed(2)}`);
+                }
+                if (item._basket.discount > 0) {
+                    breakdown.push(`Discount: -$${item._basket.discount.toFixed(2)}`);
+                }
+
+                if (breakdown.length > 0) {
+                    priceHtml = `
+                        <div style="text-align: right;">
+                            <div style="font-weight: 500;">$${(item.price * qty).toFixed(2)}</div>
+                            <div style="font-size: 10px; color: #9ca3af; margin-top: 2px;">${breakdown.join(' • ')}</div>
+                        </div>
+                    `;
+                }
             }
 
             li.innerHTML = `
@@ -163,12 +323,38 @@ document.addEventListener('DOMContentLoaded', () => {
           ${imageHtml}
           <div style="flex-grow: 1;">
             <div>${item.name} <span style="color: #666; font-size: 11px;">(x${qty})</span></div>
+            ${item.id ? `<div style="font-size: 10px; color: #9ca3af; margin-top: 2px;">ID: ${item.id}</div>` : ''}
           </div>
-          <div style="font-weight: 500;">$${(item.price * qty).toFixed(2)}</div>
+          ${priceHtml}
         </div>
       `;
             detailItems.appendChild(li);
         });
+
+        // Handle Show JSON button
+        const showJsonBtn = detailView.querySelector('#show-json-btn');
+        const jsonDisplay = detailView.querySelector('#json-display');
+
+        // Remove old listeners to avoid duplicates
+        const newShowJsonBtn = showJsonBtn.cloneNode(true);
+        showJsonBtn.parentNode.replaceChild(newShowJsonBtn, showJsonBtn);
+
+        let jsonVisible = false;
+        newShowJsonBtn.addEventListener('click', () => {
+            jsonVisible = !jsonVisible;
+            if (jsonVisible) {
+                jsonDisplay.textContent = JSON.stringify(req, null, 2);
+                jsonDisplay.classList.remove('hidden');
+                newShowJsonBtn.textContent = 'Hide Full Request JSON';
+            } else {
+                jsonDisplay.classList.add('hidden');
+                newShowJsonBtn.textContent = 'Show Full Request JSON';
+            }
+        });
+
+        // Reset JSON display when showing details
+        jsonDisplay.classList.add('hidden');
+        newShowJsonBtn.textContent = 'Show Full Request JSON';
 
         // Handle Pay Now button
         const payBtn = detailView.querySelector('.pay-btn');
@@ -232,5 +418,9 @@ document.addEventListener('DOMContentLoaded', () => {
         listView.classList.remove('hidden');
     });
 
-    renderList();
+    // Initial render and set count
+    chrome.storage.local.get({ requests: [] }, (result) => {
+        lastRequestCount = result.requests.length;
+        renderList();
+    });
 });
