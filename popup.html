@@ -200,22 +200,22 @@
     }
 
     .details-btn {
-      background-color: #f3f4f6;
-      color: #374151;
-      border: 1px solid #d1d5db;
+      background: none;
+      border: none;
+      color: #6b7280;
       width: 100%;
-      padding: 10px;
-      font-size: 14px;
-      font-weight: 500;
+      padding: 8px;
+      font-size: 11px;
       cursor: pointer;
-      margin-top: 15px;
-      border-radius: 6px;
-      transition: all 0.2s;
+      margin-top: 10px;
+      text-decoration: underline;
+      transition: color 0.2s;
     }
 
     .details-btn:hover {
-      background-color: #e5e7eb;
-      border-color: #9ca3af;
+      color: #374151;
+      background: none;
+      border: none;
     }
 
     .json-display {
@@ -273,6 +273,31 @@
     .request-card.new-card {
       animation: slideInFromTop 0.4s ease-out, pulse 1s ease-in-out 0.4s;
     }
+
+    .source-link {
+      display: block;
+      text-align: center;
+      font-size: 12px;
+      color: #2563eb;
+      text-decoration: none;
+      margin-bottom: 15px;
+    }
+
+    .source-link:hover {
+      text-decoration: underline;
+    }
+
+    .big-price-link {
+      display: block;
+      text-decoration: none;
+      color: inherit;
+      transition: color 0.2s;
+    }
+
+    .big-price-link:hover {
+      color: #2563eb;
+      text-decoration: underline;
+    }
   </style>
 </head>
 
@@ -293,7 +318,7 @@
     <div class="invoice-content">
       <div class="invoice-total">
         <div style="font-size: 12px; color: #666; margin-bottom: 5px;">Total Amount</div>
-        <div class="big-price" id="detail-total">$0.00</div>
+        <a class="big-price big-price-link" id="detail-total" href="#" target="_blank">$0.00</a>
       </div>
       <ul class="invoice-items" id="detail-items">
         <!-- Items go here -->

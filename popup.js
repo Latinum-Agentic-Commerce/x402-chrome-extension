@@ -9,6 +9,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const backButton = document.getElementById('back-button');
     const detailTotal = document.getElementById('detail-total');
     const detailItems = document.getElementById('detail-items');
+    // sourceLink removed
 
     let lastRequestCount = 0;
 
@@ -279,7 +280,37 @@ document.addEventListener('DOMContentLoaded', () => {
         listView.classList.add('hidden');
         detailView.classList.remove('hidden');
 
+        // Handle Source Link on Price
+        if (req.sourceUrl) {
+            detailTotal.href = req.sourceUrl;
+            detailTotal.style.pointerEvents = 'auto';
+            detailTotal.title = `Go to ${req.sourceUrl}`;
+        } else {
+            detailTotal.href = '#';
+            detailTotal.style.pointerEvents = 'none';
+            detailTotal.title = '';
+        }
+
         detailTotal.textContent = `$${total.toFixed(2)}`;
+
+        // Display Request ID if available
+        const existingRequestId = detailView.querySelector('.request-id-display');
+        if (existingRequestId) {
+            existingRequestId.remove();
+        }
+
+        if (req.requestId) {
+            const reqIdDiv = document.createElement('div');
+            reqIdDiv.className = 'request-id-display';
+            reqIdDiv.style.textAlign = 'center';
+            reqIdDiv.style.fontSize = '11px';
+            reqIdDiv.style.color = '#6b7280';
+            reqIdDiv.style.marginBottom = '12px';
+            reqIdDiv.style.fontFamily = 'monospace';
+            reqIdDiv.textContent = `ID: ${req.requestId}`;
+            detailTotal.parentNode.insertBefore(reqIdDiv, detailTotal.nextSibling);
+        }
+
         detailItems.innerHTML = '';
 
         items.forEach(item => {

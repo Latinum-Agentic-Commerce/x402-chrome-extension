@@ -20,13 +20,27 @@ window.fetch = async (...args) => {
             console.log('[x402] Response body length:', bodyText.length, '- Method:', method);
 
             // Send to the isolated content script
+            let requestId = undefined;
+            try {
+                const json = JSON.parse(bodyText);
+                if (json) {
+                    if (typeof json.requestId === 'string') {
+                        requestId = json.requestId;
+                    } else if (json.x402 && typeof json.x402.requestId === 'string') {
+                        requestId = json.x402.requestId;
+                    } else if (json.accepts && Array.isArray(json.accepts) && json.accepts.length > 0 && json.accepts[0].extra && typeof json.accepts[0].extra.requestId === 'string') {
+                        requestId = json.accepts[0].extra.requestId;
+                    }
+                }
+            } catch (e) { /* ignore parse errors */ }
             window.postMessage({
                 type: 'X402_CAPTURED',
                 url: response.url,
                 status: response.status,
                 method: method,
                 headers: Object.fromEntries(response.headers.entries()),
-                body: bodyText
+                body: bodyText,
+                requestId: requestId
             }, '*');
         } catch (err) {
             console.error('[x402] Error capturing fetch response:', err);
@@ -40,14 +54,14 @@ window.fetch = async (...args) => {
 const XHROpen = XMLHttpRequest.prototype.open;
 const XHRSend = XMLHttpRequest.prototype.send;
 
-XMLHttpRequest.prototype.open = function(method, url, ...rest) {
+XMLHttpRequest.prototype.open = function (method, url, ...rest) {
     this._x402_url = url;
     this._x402_method = method;
     return XHROpen.apply(this, [method, url, ...rest]);
 };
 
-XMLHttpRequest.prototype.send = function(...args) {
-    this.addEventListener('load', function() {
+XMLHttpRequest.prototype.send = function (...args) {
+    this.addEventListener('load', function () {
         if (this.status === 402) {
             console.log('[x402] Detected 402 response via XMLHttpRequest:', this._x402_url || this.responseURL);
 
@@ -62,12 +76,26 @@ XMLHttpRequest.prototype.send = function(...args) {
                 });
 
                 // Send to the isolated content script
+                let requestId = undefined;
+                try {
+                    const json = JSON.parse(this.responseText);
+                    if (json) {
+                        if (typeof json.requestId === 'string') {
+                            requestId = json.requestId;
+                        } else if (json.x402 && typeof json.x402.requestId === 'string') {
+                            requestId = json.x402.requestId;
+                        } else if (json.accepts && Array.isArray(json.accepts) && json.accepts.length > 0 && json.accepts[0].extra && typeof json.accepts[0].extra.requestId === 'string') {
+                            requestId = json.accepts[0].extra.requestId;
+                        }
+                    }
+                } catch (e) { /* ignore */ }
                 window.postMessage({
                     type: 'X402_CAPTURED',
                     url: this._x402_url || this.responseURL,
                     status: this.status,
                     headers: headers,
-                    body: this.responseText
+                    body: this.responseText,
+                    requestId: requestId
                 }, '*');
             } catch (err) {
                 console.error('[x402] Error capturing XHR response:', err);

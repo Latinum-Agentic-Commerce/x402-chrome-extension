@@ -16,7 +16,9 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
             responseBody: data.body, // Store the body!
             isX402: true,
             tabId: sender.tab ? sender.tab.id : null,
-            source: data.source || 'interceptor' // Mark the source (interceptor or embedded)
+            source: data.source || 'interceptor', // Mark the source (interceptor or embedded)
+            requestId: data.requestId, // Capture requestId if present
+            sourceUrl: sender.tab ? sender.tab.url : null // Capture source URL
         };
 
         console.log('[background] Saving request data with body length:', requestData.responseBody?.length);
@@ -29,30 +31,27 @@ function saveRequest(requestData) {
     chrome.storage.local.get({ requests: [] }, (result) => {
         const requests = result.requests;
 
-        // IMPROVED dedup: check by URL, method, and within a wider time window
-        // Also prefer requests with responseBody
-        const existingIndex = requests.findIndex(r =>
-            r.url === requestData.url &&
-            r.method === requestData.method && // Include method in dedup check
-            Math.abs(r.timeStamp - requestData.timeStamp) < 5000 // 5 second window
-        );
+        // Deduplication logic prioritizing requestId if present
+        let existingIndex = -1;
+        if (requestData.requestId) {
+            existingIndex = requests.findIndex(r => r.requestId === requestData.requestId);
+        }
+        if (existingIndex === -1) {
+            // Fallback to URL+method+time window dedup
+            existingIndex = requests.findIndex(r =>
+                r.url === requestData.url &&
+                r.method === requestData.method &&
+                Math.abs(r.timeStamp - requestData.timeStamp) < 5000 // 5 second window
+            );
+        }
 
         if (existingIndex !== -1) {
-            // Request already exists - replace it if the new one has a body and the old one doesn't
-            // OR if the new one is from embedded source (which has actual payment data)
-            const shouldReplace =
-                (requestData.responseBody && !requests[existingIndex].responseBody) ||
-                (requestData.source === 'embedded' && requests[existingIndex].source !== 'embedded');
-
-            if (shouldReplace) {
-                console.log('[background] Replacing request - new source:', requestData.source, ', old source:', requests[existingIndex].source);
-                requests[existingIndex] = requestData;
-                chrome.storage.local.set({ requests }, () => {
-                    console.log('[background] Updated 402 request with body, responseBody length:', requestData.responseBody.length);
-                });
-            } else {
-                console.log('[background] Skipping duplicate request (existing has body:', !!requests[existingIndex].responseBody, ', new has body:', !!requestData.responseBody, ')');
-            }
+            // Existing entry found - replace with newer data (last one wins)
+            console.log('[background] Replacing existing request (by requestId or fallback)');
+            requests[existingIndex] = requestData;
+            chrome.storage.local.set({ requests }, () => {
+                console.log('[background] Updated request entry');
+            });
         } else {
             // New request
             requests.push(requestData);
@@ -61,13 +60,10 @@ function saveRequest(requestData) {
                 if (requestData.responseBody) {
                     console.log('[background] Response body preview:', requestData.responseBody.substring(0, 200));
                 }
-                if (requestData.responseBody) {
-                    console.log('[background] Response body preview:', requestData.responseBody.substring(0, 200));
-                }
-                // showNotification(requestData.url); // Removed as per user request
                 animateBadge(requests.length);
             });
         }
+
     });
 }
 
@@ -113,18 +109,42 @@ chrome.webRequest.onCompleted.addListener(
         if (details.statusCode === 402) {
             console.log('[background] webRequest caught 402:', details.method, details.url);
 
-            const requestData = {
-                url: details.url,
-                method: details.method,
-                timeStamp: details.timeStamp,
-                statusCode: details.statusCode,
-                responseHeaders: details.responseHeaders,
-                isX402: true,
-                tabId: details.tabId,
-                source: 'webRequest' // Mark the source
-            };
+            // Fetch tab info to get the URL
+            if (details.tabId && details.tabId !== -1) {
+                chrome.tabs.get(details.tabId, (tab) => {
+                    if (chrome.runtime.lastError) {
+                        console.warn('[background] Error getting tab info:', chrome.runtime.lastError);
+                    }
 
-            saveRequest(requestData);
+                    const requestData = {
+                        url: details.url,
+                        method: details.method,
+                        timeStamp: details.timeStamp,
+                        statusCode: details.statusCode,
+                        responseHeaders: details.responseHeaders,
+                        isX402: true,
+                        tabId: details.tabId,
+                        source: 'webRequest', // Mark the source
+                        sourceUrl: tab ? tab.url : null // Capture source URL
+                    };
+
+                    saveRequest(requestData);
+                });
+            } else {
+                // Fallback if no tab ID
+                const requestData = {
+                    url: details.url,
+                    method: details.method,
+                    timeStamp: details.timeStamp,
+                    statusCode: details.statusCode,
+                    responseHeaders: details.responseHeaders,
+                    isX402: true,
+                    tabId: details.tabId,
+                    source: 'webRequest', // Mark the source
+                    sourceUrl: null
+                };
+                saveRequest(requestData);
+            }
         }
     },
     { urls: ["<all_urls>"] },
