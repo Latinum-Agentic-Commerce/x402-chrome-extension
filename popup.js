@@ -392,26 +392,16 @@ document.addEventListener('DOMContentLoaded', () => {
         const showJsonBtn = detailView.querySelector('#show-json-btn');
         const jsonDisplay = detailView.querySelector('#json-display');
 
-        // Remove old listeners to avoid duplicates
-        const newShowJsonBtn = showJsonBtn.cloneNode(true);
-        showJsonBtn.parentNode.replaceChild(newShowJsonBtn, showJsonBtn);
-
-        let jsonVisible = false;
-        newShowJsonBtn.addEventListener('click', () => {
-            jsonVisible = !jsonVisible;
-            if (jsonVisible) {
-                jsonDisplay.textContent = JSON.stringify(req, null, 2);
-                jsonDisplay.classList.remove('hidden');
-                newShowJsonBtn.textContent = 'Hide Full Request JSON';
-            } else {
-                jsonDisplay.classList.add('hidden');
-                newShowJsonBtn.textContent = 'Show Full Request JSON';
-            }
-        });
-
-        // Reset JSON display when showing details
-        jsonDisplay.classList.add('hidden');
-        newShowJsonBtn.textContent = 'Show Full Request JSON';
+        // In debug mode, show JSON automatically and hide the button
+        if (debugMode) {
+            showJsonBtn.classList.add('hidden');
+            jsonDisplay.textContent = JSON.stringify(req, null, 2);
+            jsonDisplay.classList.remove('hidden');
+        } else {
+            // In normal mode, hide both button and JSON
+            showJsonBtn.classList.add('hidden');
+            jsonDisplay.classList.add('hidden');
+        }
 
         // Handle Pay Now button
         const payBtn = detailView.querySelector('.pay-btn');
