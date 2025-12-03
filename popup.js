@@ -9,9 +9,25 @@ document.addEventListener('DOMContentLoaded', () => {
     const backButton = document.getElementById('back-button');
     const detailTotal = document.getElementById('detail-total');
     const detailItems = document.getElementById('detail-items');
-    // sourceLink removed
+    const debugToggle = document.getElementById('debug-toggle');
 
     let lastRequestCount = 0;
+    let debugMode = false;
+
+    // Load debug mode state from storage
+    chrome.storage.local.get({ debugMode: false }, (result) => {
+        debugMode = result.debugMode;
+        debugToggle.checked = debugMode;
+        renderList();
+    });
+
+    // Debug toggle button handler
+    debugToggle.addEventListener('change', () => {
+        debugMode = debugToggle.checked;
+        chrome.storage.local.set({ debugMode }, () => {
+            renderList();
+        });
+    });
 
     // Listen for storage changes to update in real-time
     chrome.storage.onChanged.addListener((changes, namespace) => {
@@ -30,11 +46,21 @@ document.addEventListener('DOMContentLoaded', () => {
             const requests = result.requests.reverse(); // Newest first
             requestList.innerHTML = '';
 
-            if (requests.length === 0) {
+            // Filter out zero-value requests from display only (unless debug mode is on)
+            let displayRequests = requests;
+            if (!debugMode) {
+                displayRequests = requests.filter(req => {
+                    const items = getItemsFromRequest(req);
+                    const total = items.reduce((sum, item) => sum + (item.price * (item.quantity || 1)), 0);
+                    return total > 0;
+                });
+            }
+
+            if (displayRequests.length === 0) {
                 emptyState.classList.remove('hidden');
             } else {
                 emptyState.classList.add('hidden');
-                requests.forEach((req, index) => {
+                displayRequests.forEach((req, index) => {
                     const items = getItemsFromRequest(req);
                     const total = items.reduce((sum, item) => sum + (item.price * (item.quantity || 1)), 0);
 
