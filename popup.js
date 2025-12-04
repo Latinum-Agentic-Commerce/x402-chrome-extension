@@ -388,18 +388,15 @@ document.addEventListener('DOMContentLoaded', () => {
             detailItems.appendChild(li);
         });
 
-        // Handle Show JSON button
-        const showJsonBtn = detailView.querySelector('#show-json-btn');
+        // Handle JSON display
         const jsonDisplay = detailView.querySelector('#json-display');
 
-        // In debug mode, show JSON automatically and hide the button
-        if (debugMode) {
-            showJsonBtn.classList.add('hidden');
+        // In debug mode, show JSON automatically
+        if (debugMode && jsonDisplay) {
             jsonDisplay.textContent = JSON.stringify(req, null, 2);
             jsonDisplay.classList.remove('hidden');
-        } else {
-            // In normal mode, hide both button and JSON
-            showJsonBtn.classList.add('hidden');
+        } else if (jsonDisplay) {
+            // In normal mode, hide JSON
             jsonDisplay.classList.add('hidden');
         }
 

@@ -104,25 +104,28 @@ app.post('/pay', (req, res) => {
         console.warn('⚠️ Basket validation failed:', validateBasket.errors);
     }
 
-    // Build PaymentRequirements object (v2)
+    // Build PaymentRequirements object following the accepts array structure
     const paymentRequirements = {
-        scheme: 'exact',
-        network: 'base-sepolia',
-        maxAmountRequired: (total * 1000000).toString(), // USDC atomic units (example)
-        resource: `${req.protocol}://${req.get('host')}${req.originalUrl}?paymentId=${paymentId}`,
+        x402Version: 1,
+        error: 'Payment required',
         description: 'Shopping cart payment',
-        mimeType: 'application/json',
         // New structured basket (v2)
-        basket: basket,               // <-- transformed to conform to basket schema
-        // Keep legacy field for v1 compatibility
-        extra: items,
-        payTo: MERCHANT_ADDRESS,
-        asset: '0x036CbD53842c5426634e7929541eC2318f3dCF7e',
-        maxTimeoutSeconds: maxTimeoutSeconds,
-        x402Version: '2.0',
-        paymentId: paymentId,
-        expiresAt: new Date(expiresAt).toISOString(),
-        paymentStatusUrl: paymentStatusUrl
+        basket: basket,
+        accepts: [{
+            scheme: 'exact',
+            network: 'base-sepolia',
+            maxAmountRequired: (total * 1000000).toString(), // USDC atomic units (example)
+            resource: `${req.protocol}://${req.get('host')}${req.originalUrl}`,
+            description: 'Shopping cart payment',
+            mimeType: 'application/json',
+            payTo: MERCHANT_ADDRESS,
+            asset: '0x036CbD53842c5426634e7929541eC2318f3dCF7e',
+            maxTimeoutSeconds: maxTimeoutSeconds,
+            extra: {
+                requestId: paymentId,  // Payment ID goes here in the extra field
+                items: items  // Keep legacy items for compatibility
+            }
+        }]
     };
 
     // Set header for extension compatibility

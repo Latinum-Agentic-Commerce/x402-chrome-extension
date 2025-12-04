@@ -79,70 +79,37 @@ function saveRequest(requestData) {
     chrome.storage.local.get({ requests: [] }, (result) => {
         const requests = result.requests;
 
-        // Deduplication logic prioritizing requestId if present
+        // Deduplication by requestId only
         let existingIndex = -1;
         if (requestData.requestId) {
             existingIndex = requests.findIndex(r => r.requestId === requestData.requestId);
         }
-        if (existingIndex === -1) {
-            // Fallback to URL+method+time window dedup
-            existingIndex = requests.findIndex(r =>
-                r.url === requestData.url &&
-                r.method === requestData.method &&
-                Math.abs(r.timeStamp - requestData.timeStamp) < 5000 // 5 second window
-            );
-        }
 
         if (existingIndex !== -1) {
-            // Existing entry found - merge data, preserving responseBody if present
-            console.log('[background] Replacing existing request (by requestId or fallback)');
-            const existingData = requests[existingIndex];
-            const hadBody = !!existingData.responseBody;
-            const mergedData = {
-                ...requestData,
-                // Preserve responseBody from existing if new one doesn't have it
-                responseBody: requestData.responseBody || existingData.responseBody
-            };
-            requests[existingIndex] = mergedData;
-
-            chrome.storage.local.set({ requests }, () => {
-                console.log('[background] Updated request entry');
-
-                // Show notification if this update added a responseBody with basket
-                if (!hadBody && mergedData.responseBody) {
-                    animateBadge(requests.length);
-                    showNotificationForRequest(mergedData);
-                }
-
-                // Broadcast update to the specific tab
-                if (mergedData.tabId) {
-                    chrome.tabs.sendMessage(mergedData.tabId, {
-                        type: 'X402_BASKET_UPDATED',
-                        data: mergedData
-                    }).catch(err => console.log('[background] Could not send update to tab (tab might be closed or no content script):', err));
-                }
-            });
+            // Replace existing request
+            requests[existingIndex] = requestData;
         } else {
-            // New request
+            // Insert new request
             requests.push(requestData);
-            chrome.storage.local.set({ requests }, () => {
-                console.log('[background] Saved new 402 request, total:', requests.length);
-                animateBadge(requests.length);
-
-                // Show browser notification only if we have basket data
-                if (requestData.responseBody) {
-                    showNotificationForRequest(requestData);
-                }
-
-                // Broadcast update to the specific tab
-                if (requestData.tabId) {
-                    chrome.tabs.sendMessage(requestData.tabId, {
-                        type: 'X402_BASKET_UPDATED',
-                        data: requestData
-                    }).catch(err => console.log('[background] Could not send update to tab (tab might be closed or no content script):', err));
-                }
-            });
         }
+
+        // Save and trigger notification in both cases
+        chrome.storage.local.set({ requests }, () => {
+            animateBadge(requests.length);
+
+            // Show browser notification if we have basket data
+            if (requestData.responseBody) {
+                showNotificationForRequest(requestData);
+            }
+
+            // Broadcast update to the specific tab
+            if (requestData.tabId) {
+                chrome.tabs.sendMessage(requestData.tabId, {
+                    type: 'X402_BASKET_UPDATED',
+                    data: requestData
+                }).catch(err => console.log('[background] Could not send update to tab (tab might be closed or no content script):', err));
+            }
+        });
 
     });
 }
@@ -208,50 +175,3 @@ chrome.notifications.onClicked.addListener((notificationId) => {
     chrome.notifications.clear(notificationId);
 });
 
-// Re-enabled: Catch document navigations and other non-fetch requests
-chrome.webRequest.onCompleted.addListener(
-    (details) => {
-        if (details.statusCode === 402) {
-            console.log('[background] webRequest caught 402:', details.method, details.url);
-
-            // Fetch tab info to get the URL
-            if (details.tabId && details.tabId !== -1) {
-                chrome.tabs.get(details.tabId, (tab) => {
-                    if (chrome.runtime.lastError) {
-                        console.warn('[background] Error getting tab info:', chrome.runtime.lastError);
-                    }
-
-                    const requestData = {
-                        url: details.url,
-                        method: details.method,
-                        timeStamp: details.timeStamp,
-                        statusCode: details.statusCode,
-                        responseHeaders: details.responseHeaders,
-                        isX402: true,
-                        tabId: details.tabId,
-                        source: 'webRequest', // Mark the source
-                        sourceUrl: tab ? tab.url : null // Capture source URL
-                    };
-
-                    saveRequest(requestData);
-                });
-            } else {
-                // Fallback if no tab ID
-                const requestData = {
-                    url: details.url,
-                    method: details.method,
-                    timeStamp: details.timeStamp,
-                    statusCode: details.statusCode,
-                    responseHeaders: details.responseHeaders,
-                    isX402: true,
-                    tabId: details.tabId,
-                    source: 'webRequest', // Mark the source
-                    sourceUrl: null
-                };
-                saveRequest(requestData);
-            }
-        }
-    },
-    { urls: ["<all_urls>"] },
-    ["responseHeaders", "extraHeaders"]
-);

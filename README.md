@@ -36,6 +36,7 @@ The goal is to provide a **minimal, fully‑functional browser capturer** for x4
   - [Using the Extension](#using-the-extension)
     - [Inspecting the data](#inspecting-the-data)
   - [Architecture Overview](#architecture-overview)
+    - [Deduplication Mechanism](#deduplication-mechanism)
   - [Key x402 Features Implemented](#key-x402-features-implemented)
   - [Extending / Next Steps](#extending--next-steps)
   - [Proposal for x402 v2](#proposal-for-x402-v2)
@@ -104,17 +105,33 @@ chrome.storage.local.get({requests: []}, ({requests}) => console.log(requests));
 - **Background script** (`background.js`) listens for any `402` response, stores the request in `chrome.storage.local`, and shows a browser notification
 - **Popup UI** (`popup.html`/`popup.js`) reads the stored requests, parses payment requirements (including `basket` field for x402 v2), and renders invoice items
 
+### Deduplication Mechanism
+
+The capturer implements intelligent deduplication to prevent the same payment request from appearing multiple times:
+
+**Server-side ([server_x402.js:74-88](server_x402.js#L74-L88), [server_x402.js:107-129](server_x402.js#L107-L129)):**
+- Generates a unique `paymentId` (UUID v4) for each payment request
+- Stores the basket items in an in-memory `pendingPayments` map keyed by `paymentId`
+- Returns payment requirements in an `accepts` array structure
+- Includes the `paymentId` in `accepts[0].extra.requestId` field
+
+**Client-side ([interceptor_main.js:27-28](interceptor_main.js#L27-L28), [background.js:82-86](background.js#L82-L86)):**
+- The interceptor extracts `requestId` from `accepts[0].extra.requestId` in the response body
+- The `saveRequest` function deduplicates by matching `requestId`
+- When a duplicate is detected, the capturer updates the existing entry
+
 ---
 
 ## Key x402 Features Implemented
 
-| Feature                    | Implementation                                                                                   |
-| -------------------------- | ------------------------------------------------------------------------------------------------ |
-| **402 Response Detection** | Background script listens for `WWW‑Authenticate: x402` header to recognize x402 payment requests |
-| **Request Storage**        | Captured 402 requests are stored in `chrome.storage.local` for persistence                       |
-| **Basket Support**         | Extension parses and displays x402 v2 `basket` field with line items, quantities, and totals     |
-| **Payment UI**             | Popup displays invoice items with **Pay Now** button for MetaMask integration                    |
-| **Request Management**     | Delete button per request to remove entries from storage                                         |
+| Feature                    | Implementation                                                                                                |
+| -------------------------- | ------------------------------------------------------------------------------------------------------------- |
+| **402 Response Detection** | Background script listens for `WWW‑Authenticate: x402` header to recognize x402 payment requests              |
+| **Request Storage**        | Captured 402 requests are stored in `chrome.storage.local` for persistence                                    |
+| **Basket Support**         | Extension parses and displays x402 v2 `basket` field with line items, quantities, and totals                  |
+| **Payment UI**             | Popup displays invoice items with **Pay Now** button for MetaMask integration                                 |
+| **Request Management**     | Delete button per request to remove entries from storage                                                      |
+| **Deduplication**          | Uses `paymentId` to prevent duplicate basket entries when the same payment request is captured multiple times |
 
 ---
 
@@ -167,7 +184,6 @@ chrome.storage.local.get({requests: []}, ({requests}) => console.log(requests));
 **Backwards compatibility**
 
 * The field is **optional**; existing implementations that ignore it continue to work.  
-* `x402Version` should be bumped to `2.0` (or `2.x`) when the field is first shipped.
 
 ---
 
