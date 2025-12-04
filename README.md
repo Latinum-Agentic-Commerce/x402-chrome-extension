@@ -1,79 +1,64 @@
-# x402 Payment Protocol Playground (Chrome Extension + Demo Server)
+# x402 Browser Capturer (Chrome Extension)
 
 ## Overview
 
-This repository demonstrates a **v1‑compliant** x402 implementation (using the `scheme`, `network`, `maxAmountRequired`, `payTo`, and related fields) and serves as a playground for building Chrome‑extension based payment flows.
+This repository demonstrates a **v1‑compliant** x402 implementation (using the `scheme`, `network`, `maxAmountRequired`, `payTo`, and related fields) as a Chrome extension that captures and displays x402 payment requests.
 
 We are already leveraging the core v1 protocol, and as part of our roadmap we plan to adopt **x402 v2**, which introduces an optional `basket` field for a structured representation of multiple line‑items.
 
-- The extension listens for `402` responses, stores the request details, and shows a UI where the user can view the invoice items and click **Pay Now** (later you can hook this up to MetaMask).
+- The extension listens for `402` responses, stores the request details, and shows a UI where the user can view the invoice items and click **Pay Now**.
 
-The goal is to provide a **minimal, fully‑functional playground** for experimenting with the x402 protocol, testing integration with wallets, and building richer payment‑gated experiences.
+The goal is to provide a **minimal, fully‑functional browser capturer** for x402 payment requests, enabling wallet integration and payment‑gated experiences.
+
+---
+
+## Demo Screenshots
+
+**Extension Popup (Payment Preview)**
+
+![Payment Preview](examples/preview.png)
+
+**Basket View**
+
+![Basket View](examples/basket.png)
 
 ---
 
 ## Table of Contents
 
-1. [Prerequisites](#prerequisites)
-2. [Installation](#installation)
-3. [Running the Server](#running-the-server)
-4. [Loading the Chrome Extension](#loading-the-chrome-extension)
-5. [Using the Demo](#using-the-demo)
-6. [Architecture Overview](#architecture-overview)
-7. [Key x402 Features Implemented](#key-x402-features-implemented)
-8. [Extending / Next Steps](#extending--next-steps)
-9. [Troubleshooting](#troubleshooting)
-10. [License](#license)
+- [x402 Browser Capturer (Chrome Extension)](#x402-browser-capturer-chrome-extension)
+  - [Overview](#overview)
+  - [Demo Screenshots](#demo-screenshots)
+  - [Table of Contents](#table-of-contents)
+  - [Prerequisites](#prerequisites)
+  - [Installation](#installation)
+  - [Loading the Chrome Extension](#loading-the-chrome-extension)
+  - [Using the Extension](#using-the-extension)
+    - [Inspecting the data](#inspecting-the-data)
+  - [Architecture Overview](#architecture-overview)
+  - [Key x402 Features Implemented](#key-x402-features-implemented)
+  - [Extending / Next Steps](#extending--next-steps)
+  - [Proposal for x402 v2](#proposal-for-x402-v2)
+    - [Add an optional `basket` field to `PaymentRequirements`](#add-an-optional-basket-field-to-paymentrequirements)
+  - [License](#license)
 
 ---
 
 ## Prerequisites
 
-- **Node.js** ≥ 24 (the server uses native ES‑module‑compatible syntax).  
-- **npm** (or `pnpm`/`yarn` – any works).  
-- **Google Chrome** (or any Chromium‑based browser that supports Manifest V3 extensions).  
-- (Optional) **MetaMask** or another EIP‑3009‑compatible wallet if you want to implement the actual payment flow.
+
+- **Google Chrome** (or any Chromium-based browser that supports Manifest V3 extensions)
+- (Optional) **MetaMask** or another EIP-3009-compatible wallet for payment flows
 
 ---
 
 ## Installation
 
 ```bash
-# Clone the repo (if you haven't already)
+# Clone the repo
 git clone https://github.com/your‑username/x402_wpp.git
 cd x402_wpp
-
-# Install dependencies (express, x402‑express, cors, dotenv, uuid)
-npm install
 ```
-
-Create a `.env` file at the project root with your merchant address (use a testnet address for development):
-
-```dotenv
-# .env
-MERCHANT_ADDRESS=0x1234567890123456789012345678901234567890
-PORT=3001   # optional – defaults to 3001
-```
-
----
-
-## Running the Server
-
-```bash
-# Start the demo server (it will listen on http://localhost:3001)
-node server_x402.js
-```
-You should see a banner like:
-```
-╔════════════════════════════════════════╗
-║   X402 Payment Server Running          ║
-╠════════════════════════════════════════╣
-║ URL: http://localhost:3001           ║
-║ Merchant: 0x12345678...               ║
-║ Protocol: x402 (Real Blockchain)       ║
-╚════════════════════════════════════════╝
-```
-The server provides three static pages (`/`, `/checkout`, `/index.html`) and a `/pay` endpoint that returns a **402** response with the full `PaymentRequirements` payload.
 
 ---
 
@@ -92,70 +77,60 @@ The extension has the following permissions (see `manifest.json`):
 
 ---
 
-## Using the Demo
+## Using the Extension
 
-1. With the server running, open `http://localhost:3001/` in a new tab.
-2. Click the **Checkout** button on the page – this triggers a `POST /pay` request.
-3. The server responds with **HTTP 402** and the x402 JSON body.
-4. The Chrome extension automatically captures the request and shows a **popup** listing the invoice items, total amount, and a **Pay Now** button.
-5. (Future work) Clicking **Pay Now** will invoke MetaMask to sign a payment payload and resend the request with an `X‑PAYMENT` header.
-6. You can view stored requests by opening the extension popup again – each request card includes a delete button.
+1. Navigate to any website that returns **HTTP 402** responses with x402 payment requirements, such as https://latinum.ai/merchant
+2. The extension automatically captures the request and shows a **popup** with invoice items, total amount, and a **Pay Now** button
+3. Click **Pay Now** to initiate the payment flow (MetaMask integration)
+4. View stored requests by clicking the extension icon – each request card includes a delete button
 
 ### Inspecting the data
-Open the extension popup’s DevTools (`Right‑click → Inspect popup`). In the **Console** you can run:
+Open the extension popup's DevTools (`Right‑click → Inspect popup`). In the **Console** you can run:
 ```js
 chrome.storage.local.get({requests: []}, ({requests}) => console.log(requests));
 ```
-You’ll see objects containing:
-- `url` (includes `?paymentId=…`)
-- `paymentId`
-- `expiresAt`
-- `paymentStatusUrl`
-- `responseHeaders` (including `X‑Invoice‑Items`)
 
 ---
 
 ## Architecture Overview
 
 ```
-+-------------------+        +-------------------+        +-------------------+
-|   Chrome UI      | <---> | Background script | <---> |  Express server   |
-| (popup.html/js)  |        | (webRequest)      |        | (server_x402.js) |
-+-------------------+        +-------------------+        +-------------------+
++-------------------+        +-------------------+
+|   Chrome UI      | <--->  | Background script |
+| (popup.html/js)  |        | (webRequest)      |
++-------------------+        +-------------------+
 ```
 
-- **Background script** (`background.js`) listens for any `402` response, stores the request in `chrome.storage.local`, and fires a notification.
-- **Popup UI** (`popup.html`/`popup.js`) reads the stored requests, parses the `X‑Invoice‑Items` header (or the `extra` field), and renders a list of invoices.
-- **Server** (`server_x402.js`) implements the x402 protocol using **Express** and **x402‑express** (middleware disabled for the demo). It generates a unique `paymentId`, an expiration timestamp, and a status‑polling endpoint.
+- **Background script** (`background.js`) listens for any `402` response, stores the request in `chrome.storage.local`, and fires a notification
+- **Popup UI** (`popup.html`/`popup.js`) reads the stored requests, parses payment requirements (including `basket` field for x402 v2), and renders invoice items
 
 ---
 
 ## Key x402 Features Implemented
 
-| Feature | Implementation |
-|---------|----------------|
-| **PaymentRequirements JSON** | Returned from `/pay` with all mandatory fields (`scheme`, `network`, `maxAmountRequired`, `resource`, `payTo`, `asset`, `maxTimeoutSeconds`, `x402Version`). |
-| **`WWW‑Authenticate: x402` header** | Added to the 402 response so the background script can recognise the protocol. |
-| **`X‑Invoice‑Items` header** | Mirrors the `extra` payload for quick UI parsing. |
-| **Unique `paymentId`** | Generated with `uuidv4()`, included in the JSON body and as a query‑string on the `resource` URL. |
-| **`expiresAt`** | ISO‑8601 timestamp (10‑minute expiry) – can be used by the UI to disable late payments. |
-| **`paymentStatusUrl`** | Simple GET endpoint (`/payment-status/:paymentId`) that returns the stored status (`pending` by default). |
-| **In‑memory pending‑payment store** | `const pendingPayments = {}` – demo only; replace with a DB for production. |
-| **Delete‑button per request** | Implemented in `popup.js` to remove entries from `chrome.storage`. |
+| Feature                    | Implementation                                                                                   |
+| -------------------------- | ------------------------------------------------------------------------------------------------ |
+| **402 Response Detection** | Background script listens for `WWW‑Authenticate: x402` header to recognize x402 payment requests |
+| **Request Storage**        | Captured 402 requests are stored in `chrome.storage.local` for persistence                       |
+| **Basket Support**         | Extension parses and displays x402 v2 `basket` field with line items, quantities, and totals     |
+| **Payment UI**             | Popup displays invoice items with **Pay Now** button for MetaMask integration                    |
+| **Request Management**     | Delete button per request to remove entries from storage                                         |
 
 ---
 
 ## Extending / Next Steps
 
-1. **Enable the x402‑express middleware** – uncomment the middleware block to let the server automatically enforce payment before serving protected resources.
-2. **Integrate a real facilitator** (`@coinbase/x402` or a self‑hosted facilitator) to verify and settle payments on‑chain.
-3. **Persist pending payments** – replace the in‑memory `pendingPayments` map with a database (SQLite, PostgreSQL, etc.).
-4. **Complete the MetaMask flow** – use `ethers.js` or `web3.js` to construct an `X‑PAYMENT` header, sign it with the user's wallet, and resend the original request.
-5. **Add UI polish** – dark mode, micro‑animations, toast notifications for payment success/failure.
-6. **Automated tests** – add unit tests for the server (`npm test`) and integration tests for the extension using Chrome’s testing tools.
+1. **Complete the MetaMask flow** – use `ethers.js` or `web3.js` to construct an `X‑PAYMENT` header, sign it with the user's wallet, and resend the original request
+2. **Integrate payment verification** – connect to `@coinbase/x402` or a self-hosted facilitator to verify and settle payments on‑chain
+3. **Add UI polish** – dark mode, micro‑animations, toast notifications for payment success/failure
+4. **Automated tests** – add integration tests for the extension using Chrome's testing tools
 ## Proposal for x402 v2
 
 ### Add an optional `basket` field to `PaymentRequirements`
+
+**Specification:** The basket field is officially defined in [x402 PR #683](https://github.com/coinbase/x402/pull/683).
+
+**Real-world usage:** This extension demonstrates the basket spec in action. Read about our experience running a live demo: [What did we learn from running the first x402 basket demo?](https://latinumai.substack.com/p/what-did-we-learn-from-running-the)
 
 **Why:** Provides a structured, typed representation of multiple line‑items, eliminating the need for ad‑hoc `extra` objects or custom headers. Improves interoperability, UI consistency, and future‑proofs the protocol for taxes, discounts, and per‑item metadata.
 
@@ -172,6 +147,7 @@ You’ll see objects containing:
     "required": ["name", "price"],
     "properties": {
       "name": { "type": "string" },
+      "image_urls": { "type": "array", "items": { "type": "string" }, "description": "Array of product image URLs" },
       "price": { "type": "string", "description": "Amount in the smallest unit of the asset." },
       "quantity": { "type": "integer", "minimum": 1, "default": 1 },
       "tax": { "type": "string" },
@@ -182,17 +158,6 @@ You’ll see objects containing:
   }
 }
 ```
-
-**Mapping to existing fields**
-
-| x402 `basket` item | Existing x402 field | Description |
-|--------------------|---------------------|-------------|
-| `name` | `extra.name` or `product_data.name` (Stripe) | Human‑readable title |
-| `price` | `price_data.unit_amount` (cents) | Smallest‑unit amount |
-| `quantity` | `quantity` | Number of units |
-| `tax` | `tax_rates` / `automatic_tax` | Tax amount (optional) |
-| `discount` | `discounts` | Discount amount (optional) |
-| `metadata` | `product_data.metadata` or `session.metadata` | Arbitrary key‑value pairs |
 
 **Integration steps**
 
@@ -207,23 +172,11 @@ You’ll see objects containing:
 
 ---
 
----
-
-## Troubleshooting
-
-| Symptom | Likely Cause | Fix |
-|---------|--------------|-----|
-| Extension popup shows no requests after checkout | Background script not listening (permissions missing) | Verify `manifest.json` includes `webRequest`, `extraHeaders`, and that the extension is reloaded after changes. |
-| `curl` to `/pay` returns 200 instead of 402 | `paymentMiddleware` still enabled with a mis‑configured route | Ensure the middleware block is commented out (as in the demo) or that the route matches `/pay`. |
-| `paymentId` missing in response | `uuid` package not installed or import missing | Run `npm install uuid` and ensure `const { v4: uuidv4 } = require('uuid');` is present at the top of `server_x402.js`. |
-| Server crashes on start | `.env` missing `MERCHANT_ADDRESS` | Add a valid address to `.env` and restart. |
-
----
-
 ## License
 
-This project is provided **as‑is** for educational and prototyping purposes. Feel free to fork, modify, and use it in your own applications. The underlying x402 protocol is open‑source under the MIT license (see the official Coinbase `x402` repository for details).
+MIT License
+
+This project supports the x402 v2 basket spec proposal ([PR #683](https://github.com/coinbase/x402/pull/683)).
 
 ---
 
-*Happy hacking with x402!*
