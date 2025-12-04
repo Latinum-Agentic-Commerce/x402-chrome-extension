@@ -47,9 +47,10 @@ The goal is to provide a **minimal, fully‑functional browser capturer** for x4
 
 ## Prerequisites
 
-
 - **Google Chrome** (or any Chromium-based browser that supports Manifest V3 extensions)
-- (Optional) **MetaMask** or another EIP-3009-compatible wallet for payment flows
+- **Web3 Wallet** (at least one):
+  - For Ethereum: MetaMask, Phantom, Coinbase Wallet, or Brave Wallet
+  - For Solana: Phantom, Solflare, or Backpack
 
 ---
 
@@ -81,9 +82,16 @@ The extension has the following permissions (see `manifest.json`):
 ## Using the Extension
 
 1. Navigate to any website that returns **HTTP 402** responses with x402 payment requirements, such as https://latinum.ai/merchant
-2. The extension automatically captures the request and shows a **popup** with invoice items, total amount, and a **Pay Now** button
-3. Click **Pay Now** to initiate the payment flow (MetaMask integration)
-4. View stored requests by clicking the extension icon – each request card includes a delete button
+2. The extension automatically captures the request and shows a **browser notification**
+3. Click the extension icon to view all captured payment requests
+4. Click on a request to see the invoice details
+5. The extension will show payment buttons for each installed wallet:
+   - **Single wallet**: Shows "Pay with [Wallet Name]"
+   - **Multiple wallets**: Shows separate buttons for each (e.g., "Pay with MetaMask", "Pay with Phantom (Solana)")
+   - **No wallet**: Shows "No Web3 wallet detected. Install MetaMask or Phantom."
+6. Click your preferred wallet button to initiate payment
+7. The wallet will open automatically to approve the transaction
+8. Each request card includes a delete button to remove it from storage
 
 ### Inspecting the data
 Open the extension popup's DevTools (`Right‑click → Inspect popup`). In the **Console** you can run:
@@ -129,17 +137,62 @@ The capturer implements intelligent deduplication to prevent the same payment re
 | **402 Response Detection** | Background script listens for `WWW‑Authenticate: x402` header to recognize x402 payment requests              |
 | **Request Storage**        | Captured 402 requests are stored in `chrome.storage.local` for persistence                                    |
 | **Basket Support**         | Extension parses and displays x402 v2 `basket` field with line items, quantities, and totals                  |
-| **Payment UI**             | Popup displays invoice items with **Pay Now** button for MetaMask integration                                 |
+| **Multi-Wallet Support**   | Detects and displays buttons for all installed wallets (Ethereum and Solana)                                 |
+| **Dual-Chain Payments**    | Supports both Ethereum (ERC-20) and Solana (SPL) token transfers                                            |
+| **Smart Routing**          | Automatically routes payments based on wallet type and network requirements                                   |
+| **Network Management**     | Prompts users to switch networks if needed (e.g., to Base Sepolia)                                          |
 | **Request Management**     | Delete button per request to remove entries from storage                                                      |
 | **Deduplication**          | Uses `paymentId` to prevent duplicate basket entries when the same payment request is captured multiple times |
+| **Browser Notifications**  | Shows desktop notifications when new payment requests are captured                                           |
 
 ---
 
+## Payment Integration
+
+### Supported Wallets
+
+**Ethereum/EVM:**
+- MetaMask
+- Phantom (EVM mode)
+- Coinbase Wallet
+- Brave Wallet
+- Any Web3-compatible wallet
+
+**Solana:**
+- Phantom (Solana mode)
+- Solflare
+- Backpack
+- Generic Solana wallets
+
+### How Payments Work
+
+1. **Wallet Detection**: Automatically detects all installed wallets on page load
+2. **Multi-Wallet UI**: Shows one "Pay with [Wallet Name]" button per detected wallet
+3. **Smart Routing**: Automatically routes payments based on wallet type and network
+   - Ethereum payments: ERC-20 token transfers (Base Sepolia, other EVM chains)
+   - Solana payments: SPL token transfers (Solana mainnet/devnet)
+4. **Network Management**: Automatically prompts users to switch networks if needed
+5. **No Alerts**: Silent operation with console logging for debugging
+
+### Payment Flow
+
+**Ethereum (ERC-20):**
+- Connects to wallet via `window.ethereum`
+- Checks/switches to correct network (Base Sepolia)
+- Encodes ERC-20 transfer function
+- Sends transaction to USDC token contract
+
+**Solana (SPL):**
+- Connects to wallet via `window.solana` or wallet-specific provider
+- Creates SPL token transfer instruction
+- Signs and sends transaction
+
 ## Extending / Next Steps
 
-1. **Complete the MetaMask flow** – use `ethers.js` or `web3.js` to construct an `X‑PAYMENT` header, sign it with the user's wallet, and resend the original request
+1. **Enhanced Solana Support** – Integrate full `@solana/web3.js` for production-ready SPL token transfers with proper account derivation
 2. **Add UI polish** – dark mode, micro‑animations, toast notifications for payment success/failure
-3. **Automated tests** – add integration tests for the extension using Chrome's testing tools
+3. **Multi-chain Support** – Add support for more EVM chains (Ethereum mainnet, Polygon, Arbitrum, etc.)
+4. **Automated tests** – add integration tests for the extension using Chrome's testing tools
 ## Proposal for x402 v2
 
 ### Add an optional `basket` field to `PaymentRequirements`

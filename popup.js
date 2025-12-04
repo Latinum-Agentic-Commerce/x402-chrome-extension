@@ -302,7 +302,7 @@ document.addEventListener('DOMContentLoaded', () => {
         return []; // Empty basket - will show $0.00
     }
 
-    function showDetail(req, items, total) {
+    async function showDetail(req, items, total) {
         listView.classList.add('hidden');
         detailView.classList.remove('hidden');
 
@@ -400,60 +400,368 @@ document.addEventListener('DOMContentLoaded', () => {
             jsonDisplay.classList.add('hidden');
         }
 
-        // Handle Pay Now button
-        const payBtn = detailView.querySelector('.pay-btn');
-        // Remove old listeners to avoid duplicates if showDetail is called multiple times
-        const newPayBtn = payBtn.cloneNode(true);
-        payBtn.parentNode.replaceChild(newPayBtn, payBtn);
+        // Handle Pay Now button(s) - detect available wallets and create buttons
+        const payBtnContainer = detailView.querySelector('.pay-btn-container');
+        if (!payBtnContainer) {
+            console.error('Pay button container not found');
+            return;
+        }
 
-        newPayBtn.addEventListener('click', () => {
-            // Use the stored tab ID from the request
-            const tabId = req.tabId;
+        // Clear existing buttons
+        payBtnContainer.innerHTML = '';
 
-            if (!tabId) {
-                alert('Cannot process payment: Tab information not available');
+        // Detect available wallets by injecting a detection script
+        const detectWallets = async () => {
+            try {
+                const [result] = await chrome.scripting.executeScript({
+                    target: { tabId: req.tabId || (await chrome.tabs.query({ active: true, currentWindow: true }))[0].id },
+                    world: 'MAIN',
+                    func: () => {
+                        const wallets = [];
+
+                        // Ethereum wallets
+                        if (typeof window.ethereum !== 'undefined') {
+                            if (window.ethereum.isMetaMask) wallets.push({ name: 'MetaMask', provider: 'ethereum', chain: 'ethereum' });
+                            else if (window.ethereum.isPhantom) wallets.push({ name: 'Phantom (EVM)', provider: 'ethereum', chain: 'ethereum' });
+                            else if (window.ethereum.isCoinbaseWallet) wallets.push({ name: 'Coinbase Wallet', provider: 'ethereum', chain: 'ethereum' });
+                            else if (window.ethereum.isBraveWallet) wallets.push({ name: 'Brave Wallet', provider: 'ethereum', chain: 'ethereum' });
+                            else wallets.push({ name: 'Web3 Wallet', provider: 'ethereum', chain: 'ethereum' });
+                        }
+
+                        if (window.phantom?.ethereum && !window.ethereum?.isPhantom) {
+                            wallets.push({ name: 'Phantom (EVM)', provider: 'phantom.ethereum', chain: 'ethereum' });
+                        }
+
+                        if (window.coinbaseWalletExtension) {
+                            wallets.push({ name: 'Coinbase Wallet', provider: 'coinbaseWalletExtension', chain: 'ethereum' });
+                        }
+
+                        // Solana wallets
+                        if (window.solana?.isPhantom) {
+                            wallets.push({ name: 'Phantom (Solana)', provider: 'solana', chain: 'solana' });
+                        } else if (window.phantom?.solana) {
+                            wallets.push({ name: 'Phantom (Solana)', provider: 'phantom.solana', chain: 'solana' });
+                        } else if (typeof window.solana !== 'undefined' && !window.solana.isPhantom) {
+                            // Generic Solana wallet (could be Solflare, Backpack, etc.)
+                            const walletName = window.solana.isSolflare ? 'Solflare' :
+                                             window.solana.isBackpack ? 'Backpack' :
+                                             'Solana Wallet';
+                            wallets.push({ name: walletName, provider: 'solana', chain: 'solana' });
+                        }
+
+                        if (window.solflare?.isSolflare) {
+                            wallets.push({ name: 'Solflare', provider: 'solflare', chain: 'solana' });
+                        }
+
+                        if (window.backpack) {
+                            wallets.push({ name: 'Backpack', provider: 'backpack', chain: 'solana' });
+                        }
+
+                        return wallets;
+                    }
+                });
+
+                return result.result || [];
+            } catch (e) {
+                console.error('Failed to detect wallets:', e);
+                return [];
+            }
+        };
+
+        const wallets = await detectWallets();
+
+        if (wallets.length === 0) {
+            // No wallets detected, show a message
+            const noWalletMsg = document.createElement('div');
+            noWalletMsg.style.textAlign = 'center';
+            noWalletMsg.style.padding = '12px';
+            noWalletMsg.style.color = '#6b7280';
+            noWalletMsg.style.fontSize = '13px';
+            noWalletMsg.textContent = 'No Web3 wallet detected. Install MetaMask or Phantom.';
+            payBtnContainer.appendChild(noWalletMsg);
+            return;
+        }
+
+        // Create a payment button for each detected wallet
+        wallets.forEach(wallet => {
+            const payBtn = document.createElement('button');
+            payBtn.className = 'pay-btn';
+            payBtn.innerHTML = `Pay with ${wallet.name}`;
+            payBtn.style.marginBottom = wallets.length > 1 ? '8px' : '0';
+
+            payBtn.addEventListener('click', async () => {
+            // Extract payment requirements from the x402 response first
+            let paymentData = null;
+            try {
+                if (req.responseBody) {
+                    const body = JSON.parse(req.responseBody);
+                    if (body.accepts && body.accepts[0]) {
+                        const accept = body.accepts[0];
+                        paymentData = {
+                            payTo: accept.payTo,
+                            asset: accept.asset,
+                            amount: accept.maxAmountRequired,
+                            network: accept.network,
+                            scheme: accept.scheme
+                        };
+                    }
+                }
+            } catch (e) {
+                console.error('Failed to parse payment requirements:', e);
+            }
+
+            if (!paymentData || !paymentData.payTo || !paymentData.asset) {
+                console.error('Cannot process payment: Missing payment requirements in x402 response');
                 return;
             }
 
-            // Execute script in the original tab where the 402 occurred
+            // Try to find a valid tab to inject the script
+            let targetTabId = req.tabId;
+
+            // If we have a tabId, check if the tab still exists
+            if (targetTabId) {
+                try {
+                    await chrome.tabs.get(targetTabId);
+                    console.log('Using original tab:', targetTabId);
+                } catch (e) {
+                    console.log('Original tab no longer exists, will try to find alternative');
+                    targetTabId = null;
+                }
+            }
+
+            // If the original tab is gone, try to use the current active tab
+            if (!targetTabId) {
+                try {
+                    const [activeTab] = await chrome.tabs.query({ active: true, currentWindow: true });
+                    if (activeTab && activeTab.id) {
+                        targetTabId = activeTab.id;
+                        console.log('Using active tab:', targetTabId);
+                    }
+                } catch (e) {
+                    console.error('Failed to get active tab:', e);
+                }
+            }
+
+            // If still no tab, try to open the payment URL in a new tab
+            if (!targetTabId && req.sourceUrl) {
+                try {
+                    const newTab = await chrome.tabs.create({ url: req.sourceUrl, active: true });
+                    targetTabId = newTab.id;
+                    console.log('Opened new tab:', targetTabId);
+                    // Wait a bit for the page to load
+                    await new Promise(resolve => setTimeout(resolve, 1000));
+                } catch (e) {
+                    console.error('Failed to create new tab:', e);
+                }
+            }
+
+            if (!targetTabId) {
+                console.error('Cannot process payment: No valid tab available');
+                return;
+            }
+
+            // Execute script in the target tab
             chrome.scripting.executeScript({
-                target: { tabId: tabId },
-                world: 'MAIN',  // Run in main world to access window.ethereum
-                func: (amount) => {
-                    if (typeof window.ethereum !== 'undefined') {
-                        // Convert USD to ETH (dummy conversion: 1 ETH = $2000)
-                        const ethAmount = (amount / 2000).toFixed(4);
-                        const weiAmount = '0x' + (Math.floor(amount / 2000 * 1e18)).toString(16);
+                target: { tabId: targetTabId },
+                world: 'MAIN',  // Run in main world to access wallet providers
+                func: (paymentData, displayTotal, providerPath, walletName, walletChain) => {
+                    console.log(`Processing x402 payment with ${walletName} (${walletChain}):`, paymentData);
 
-                        window.ethereum.request({ method: 'eth_requestAccounts' })
-                            .then(accounts => {
-                                const from = accounts[0];
-                                const params = [{
-                                    from: from,
-                                    to: '0x000000000000000000000000000000000000dEaD', // Dummy address
-                                    value: weiAmount, // Hex value in wei
-                                }];
+                    // Determine if this is a Solana or Ethereum payment based on wallet chain and network
+                    const isSolanaPayment = walletChain === 'solana' ||
+                                          paymentData.network?.includes('solana');
 
-                                return window.ethereum.request({
-                                    method: 'eth_sendTransaction',
-                                    params: params,
-                                });
+                    if (isSolanaPayment) {
+                        // ===== SOLANA PAYMENT FLOW =====
+                        let provider = null;
+
+                        if (providerPath === 'solana') {
+                            provider = window.solana;
+                        } else if (providerPath === 'phantom.solana') {
+                            provider = window.phantom?.solana;
+                        } else if (providerPath === 'solflare') {
+                            provider = window.solflare;
+                        } else if (providerPath === 'backpack') {
+                            provider = window.backpack;
+                        }
+
+                        if (!provider) {
+                            console.error(`${walletName} Solana provider not found`);
+                            return;
+                        }
+
+                        // Connect to Solana wallet
+                        provider.connect({ onlyIfTrusted: false })
+                            .then(() => {
+                                const fromPubkey = provider.publicKey.toString();
+                                const toPubkey = paymentData.payTo;
+                                const mint = paymentData.asset; // SPL token mint address
+                                const amount = BigInt(paymentData.amount);
+
+                                console.log(`Solana payment from ${fromPubkey} to ${toPubkey}`);
+                                console.log(`Amount: ${amount} (${displayTotal} USD)`);
+
+                                // Create SPL Token transfer instruction
+                                // Note: This is a simplified version. In production, you'd use @solana/spl-token
+                                // For now, we'll create a basic transfer instruction
+
+                                // SPL Token Program ID
+                                const TOKEN_PROGRAM_ID = 'TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA';
+
+                                // Build transfer instruction data
+                                // Instruction: 3 = Transfer
+                                // Amount: 8 bytes (little endian)
+                                const instructionData = new Uint8Array(9);
+                                instructionData[0] = 3; // Transfer instruction
+
+                                // Write amount as little-endian u64
+                                const amountBytes = new Uint8Array(8);
+                                let tempAmount = amount;
+                                for (let i = 0; i < 8; i++) {
+                                    amountBytes[i] = Number(tempAmount & 0xFFn);
+                                    tempAmount >>= 8n;
+                                }
+                                instructionData.set(amountBytes, 1);
+
+                                // For a proper SPL token transfer, we need:
+                                // 1. Source token account (user's token account)
+                                // 2. Destination token account (merchant's token account)
+                                // 3. Authority (user's public key)
+
+                                // Create a simple transfer transaction
+                                // Note: This is simplified. Production code should use @solana/web3.js properly
+                                const transaction = {
+                                    feePayer: provider.publicKey,
+                                    recentBlockhash: null, // Will be filled by wallet
+                                    instructions: [{
+                                        programId: TOKEN_PROGRAM_ID,
+                                        keys: [
+                                            { pubkey: fromPubkey, isSigner: false, isWritable: true },  // Source
+                                            { pubkey: mint, isSigner: false, isWritable: false },       // Mint
+                                            { pubkey: toPubkey, isSigner: false, isWritable: true },    // Destination
+                                            { pubkey: provider.publicKey, isSigner: true, isWritable: false }, // Authority
+                                        ],
+                                        data: instructionData
+                                    }]
+                                };
+
+                                // Sign and send transaction
+                                return provider.signAndSendTransaction(transaction);
                             })
-                            .then(txHash => {
-                                console.log('Transaction sent! Hash:', txHash);
+                            .then(signature => {
+                                console.log(`${walletName} Solana payment transaction sent! Signature:`, signature);
+                                console.log(`Payment initiated! Amount: $${displayTotal}, Signature: ${signature}`);
                             })
                             .catch(err => {
-                                console.error('Payment error:', err);
+                                console.error('Solana payment error:', err);
+                                if (err.code === 4001 || err.message?.includes('User rejected')) {
+                                    console.log('Payment cancelled by user');
+                                } else {
+                                    console.error(`Solana payment failed: ${err.message || 'Unknown error'}`);
+                                }
                             });
                     } else {
-                        alert('MetaMask is not installed!');
+                        // ===== ETHEREUM PAYMENT FLOW =====
+                        let provider = null;
+
+                        if (providerPath === 'ethereum') {
+                            provider = window.ethereum;
+                        } else if (providerPath === 'phantom.ethereum') {
+                            provider = window.phantom?.ethereum;
+                        } else if (providerPath === 'coinbaseWalletExtension') {
+                            provider = window.coinbaseWalletExtension;
+                        }
+
+                        if (!provider) {
+                            console.error(`${walletName} provider not found`);
+                            return;
+                        }
+
+                        // ERC-20 transfer function signature
+                        const transferFunctionSignature = '0xa9059cbb';
+
+                        // Encode the recipient address (remove 0x prefix, pad to 32 bytes)
+                        const recipientAddress = paymentData.payTo.replace('0x', '').padStart(64, '0');
+
+                        // Encode the amount (pad to 32 bytes)
+                        const amountHex = BigInt(paymentData.amount).toString(16).padStart(64, '0');
+
+                        // Construct the data payload for ERC-20 transfer
+                        const data = transferFunctionSignature + recipientAddress + amountHex;
+
+                        provider.request({ method: 'eth_requestAccounts' })
+                            .then(accounts => {
+                                const from = accounts[0];
+
+                                // First, check if we're on the correct network
+                                return provider.request({ method: 'eth_chainId' })
+                                    .then(chainId => {
+                                        // Base Sepolia chain ID is 0x14a34 (84532)
+                                        const expectedChainId = '0x14a34';
+
+                                        if (chainId !== expectedChainId) {
+                                            // Prompt user to switch to Base Sepolia
+                                            return provider.request({
+                                                method: 'wallet_switchEthereumChain',
+                                                params: [{ chainId: expectedChainId }],
+                                            }).catch(switchError => {
+                                                // If the chain is not added, add it
+                                                if (switchError.code === 4902) {
+                                                    return provider.request({
+                                                        method: 'wallet_addEthereumChain',
+                                                        params: [{
+                                                            chainId: expectedChainId,
+                                                            chainName: 'Base Sepolia',
+                                                            nativeCurrency: {
+                                                                name: 'Ethereum',
+                                                                symbol: 'ETH',
+                                                                decimals: 18
+                                                            },
+                                                            rpcUrls: ['https://sepolia.base.org'],
+                                                            blockExplorerUrls: ['https://sepolia.basescan.org']
+                                                        }]
+                                                    });
+                                                }
+                                                throw switchError;
+                                            });
+                                        }
+                                    })
+                                    .then(() => {
+                                        // Now send the USDC transfer transaction
+                                        const params = [{
+                                            from: from,
+                                            to: paymentData.asset, // USDC token contract address
+                                            data: data, // Encoded transfer function call
+                                            value: '0x0' // No ETH value for ERC-20 transfer
+                                        }];
+
+                                        return provider.request({
+                                            method: 'eth_sendTransaction',
+                                            params: params,
+                                        });
+                                    })
+                                    .then(txHash => {
+                                        console.log(`${walletName} payment transaction sent! Hash:`, txHash);
+                                        console.log(`Payment initiated! Amount: $${displayTotal}, Transaction: ${txHash}`);
+                                    })
+                                    .catch(err => {
+                                        console.error('Payment error:', err);
+                                        if (err.code === 4001) {
+                                            console.log('Payment cancelled by user');
+                                        } else {
+                                            console.error(`Payment failed: ${err.message || 'Unknown error'}`);
+                                        }
+                                    });
+                            });
                     }
                 },
-                args: [total]
+                args: [paymentData, total.toFixed(2), wallet.provider, wallet.name, wallet.chain]
             }).catch(err => {
                 console.error('Script injection error:', err);
-                alert('Error: Unable to inject payment script. The original tab may have been closed.');
             });
+            });
+
+            payBtnContainer.appendChild(payBtn);
         });
     }
 
