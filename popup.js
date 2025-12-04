@@ -224,7 +224,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     console.log('[x402 basket] Found basket array with', body.basket.length, 'items');
                     return body.basket.map(item => {
                         // Parse price from smallest units (string) to decimal
-                        const basePrice = parseFloat(item.price || 0) / 100; // Convert from cents
+                        const basePrice = parseFloat(item.price || 0) / 100; // Price in cents
                         const quantity = item.quantity || 1;
                         const tax = parseFloat(item.tax || 0) / 100;
                         const discount = parseFloat(item.discount || 0) / 100;

@@ -72,8 +72,8 @@ cd x402_wpp
 The extension has the following permissions (see `manifest.json`):
 - `webRequest` + `extraHeaders` – to capture response headers.
 - `storage` – to persist captured requests.
-- `notifications` – optional toast when a 402 is captured.
 - `scripting` – to inject MetaMask‑related scripts when the user clicks **Pay Now**.
+- `notifications` – to show browser notifications when a payment request is captured
 
 ---
 
@@ -101,7 +101,7 @@ chrome.storage.local.get({requests: []}, ({requests}) => console.log(requests));
 +-------------------+        +-------------------+
 ```
 
-- **Background script** (`background.js`) listens for any `402` response, stores the request in `chrome.storage.local`, and fires a notification
+- **Background script** (`background.js`) listens for any `402` response, stores the request in `chrome.storage.local`, and shows a browser notification
 - **Popup UI** (`popup.html`/`popup.js`) reads the stored requests, parses payment requirements (including `basket` field for x402 v2), and renders invoice items
 
 ---
@@ -121,9 +121,8 @@ chrome.storage.local.get({requests: []}, ({requests}) => console.log(requests));
 ## Extending / Next Steps
 
 1. **Complete the MetaMask flow** – use `ethers.js` or `web3.js` to construct an `X‑PAYMENT` header, sign it with the user's wallet, and resend the original request
-2. **Integrate payment verification** – connect to `@coinbase/x402` or a self-hosted facilitator to verify and settle payments on‑chain
-3. **Add UI polish** – dark mode, micro‑animations, toast notifications for payment success/failure
-4. **Automated tests** – add integration tests for the extension using Chrome's testing tools
+2. **Add UI polish** – dark mode, micro‑animations, toast notifications for payment success/failure
+3. **Automated tests** – add integration tests for the extension using Chrome's testing tools
 ## Proposal for x402 v2
 
 ### Add an optional `basket` field to `PaymentRequirements`

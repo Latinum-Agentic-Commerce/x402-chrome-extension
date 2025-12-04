@@ -1,11 +1,11 @@
+// Store mapping of notification IDs to tab IDs for click handling
+const notificationToTabMap = {};
+
 // Listen for messages from content scripts (which have the response body)
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     if (message.type === 'X402_DATA') {
         const data = message.data;
-        console.log('[background] Received X402 data from interceptor:', data.url);
-        console.log('[background] Method:', data.method || 'unknown');
-        console.log('[background] Response body length:', data.body?.length, '- First 200 chars:', data.body?.substring(0, 200));
-        console.log('[background] Response status:', data.status);
+        console.log('[background] Received X402 data from interceptor:', data.url, data.method || 'unknown', 'Status:', data.status);
 
         const requestData = {
             url: data.url,
@@ -21,10 +21,58 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
             sourceUrl: sender.tab ? sender.tab.url : null // Capture source URL
         };
 
-        console.log('[background] Saving request data with body length:', requestData.responseBody?.length);
         saveRequest(requestData);
     }
 });
+
+// Helper to show notification for a request
+function showNotificationForRequest(requestData) {
+    try {
+        const hostname = new URL(requestData.url).hostname || 'unknown';
+
+        // Parse basket to get all items
+        let items = [];
+        if (requestData.responseBody) {
+            try {
+                const body = JSON.parse(requestData.responseBody);
+                if (body.basket && Array.isArray(body.basket) && body.basket.length > 0) {
+                    items = body.basket.slice(0, 5).map(item => { // Max 5 items
+                        const basePrice = parseFloat(item.price || 0) / 100;
+                        const quantity = item.quantity || 1;
+                        const itemPrice = basePrice * quantity;
+                        return {
+                            title: item.name || 'Unknown item',
+                            message: `$${itemPrice.toFixed(2)}${quantity > 1 ? ` (${quantity}x)` : ''}`
+                        };
+                    });
+                }
+            } catch (e) {
+                console.warn('[background] Failed to parse basket for notification:', e);
+            }
+        }
+
+        chrome.notifications.create({
+            type: items.length > 0 ? 'list' : 'basic',
+            iconUrl: 'icons/icon128.png',
+            title: `x402 Payment Request - ${hostname}`,
+            message: items.length > 0 ? '' : hostname,
+            items: items.length > 0 ? items : undefined,
+            priority: 1
+        }, (notificationId) => {
+            if (chrome.runtime.lastError) {
+                console.error('[background] Notification error:', chrome.runtime.lastError);
+            } else {
+                console.log('[background] Notification created:', notificationId);
+                // Store mapping for click handler
+                if (requestData.tabId) {
+                    notificationToTabMap[notificationId] = requestData.tabId;
+                }
+            }
+        });
+    } catch (error) {
+        console.error('[background] Failed to create notification:', error);
+    }
+}
 
 // Helper to save request
 function saveRequest(requestData) {
@@ -46,16 +94,31 @@ function saveRequest(requestData) {
         }
 
         if (existingIndex !== -1) {
-            // Existing entry found - replace with newer data (last one wins)
+            // Existing entry found - merge data, preserving responseBody if present
             console.log('[background] Replacing existing request (by requestId or fallback)');
-            requests[existingIndex] = requestData;
+            const existingData = requests[existingIndex];
+            const hadBody = !!existingData.responseBody;
+            const mergedData = {
+                ...requestData,
+                // Preserve responseBody from existing if new one doesn't have it
+                responseBody: requestData.responseBody || existingData.responseBody
+            };
+            requests[existingIndex] = mergedData;
+
             chrome.storage.local.set({ requests }, () => {
                 console.log('[background] Updated request entry');
+
+                // Show notification if this update added a responseBody with basket
+                if (!hadBody && mergedData.responseBody) {
+                    animateBadge(requests.length);
+                    showNotificationForRequest(mergedData);
+                }
+
                 // Broadcast update to the specific tab
-                if (requestData.tabId) {
-                    chrome.tabs.sendMessage(requestData.tabId, {
+                if (mergedData.tabId) {
+                    chrome.tabs.sendMessage(mergedData.tabId, {
                         type: 'X402_BASKET_UPDATED',
-                        data: requestData
+                        data: mergedData
                     }).catch(err => console.log('[background] Could not send update to tab (tab might be closed or no content script):', err));
                 }
             });
@@ -63,11 +126,13 @@ function saveRequest(requestData) {
             // New request
             requests.push(requestData);
             chrome.storage.local.set({ requests }, () => {
-                console.log('[background] Saved NEW 402 request' + (requestData.responseBody ? ' with body' : ' without body') + ', total:', requests.length);
-                if (requestData.responseBody) {
-                    console.log('[background] Response body preview:', requestData.responseBody.substring(0, 200));
-                }
+                console.log('[background] Saved new 402 request, total:', requests.length);
                 animateBadge(requests.length);
+
+                // Show browser notification only if we have basket data
+                if (requestData.responseBody) {
+                    showNotificationForRequest(requestData);
+                }
 
                 // Broadcast update to the specific tab
                 if (requestData.tabId) {
@@ -83,8 +148,6 @@ function saveRequest(requestData) {
 }
 
 function animateBadge(count) {
-    console.log('[background] Animating badge with count:', count);
-
     // Set badge text with count
     chrome.action.setBadgeText({ text: count.toString() });
 
@@ -117,6 +180,33 @@ function animateBadge(count) {
 
 // Notification and Window opening logic removed as per user request
 
+// Handle notification clicks - focus the tab with the 402 request
+chrome.notifications.onClicked.addListener((notificationId) => {
+    console.log('[background] Notification clicked:', notificationId);
+
+    const tabId = notificationToTabMap[notificationId];
+    if (tabId) {
+        // Focus the tab and its window
+        chrome.tabs.get(tabId, (tab) => {
+            if (chrome.runtime.lastError) {
+                console.warn('[background] Tab no longer exists:', chrome.runtime.lastError);
+            } else if (tab) {
+                // Bring the window to front and activate the tab
+                chrome.windows.update(tab.windowId, { focused: true }, () => {
+                    chrome.tabs.update(tabId, { active: true }, () => {
+                        console.log('[background] Focused tab:', tabId);
+                    });
+                });
+            }
+        });
+
+        // Clean up the mapping
+        delete notificationToTabMap[notificationId];
+    }
+
+    // Clear the notification
+    chrome.notifications.clear(notificationId);
+});
 
 // Re-enabled: Catch document navigations and other non-fetch requests
 chrome.webRequest.onCompleted.addListener(

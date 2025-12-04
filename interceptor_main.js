@@ -1,5 +1,4 @@
 // This script runs in the MAIN world, so it can wrap window.fetch and XMLHttpRequest
-console.log('[x402] Interceptor loaded in MAIN world');
 
 // Intercept fetch API
 const originalFetch = window.fetch;
@@ -12,12 +11,9 @@ window.fetch = async (...args) => {
         const requestInit = args[1] || {};
         const method = requestInit.method || 'GET';
 
-        console.log('[x402] Detected 402 response via fetch:', method, response.url);
         try {
             const clone = response.clone();
             const bodyText = await clone.text();
-
-            console.log('[x402] Response body length:', bodyText.length, '- Method:', method);
 
             // Send to the isolated content script
             let requestId = undefined;
@@ -63,8 +59,6 @@ XMLHttpRequest.prototype.open = function (method, url, ...rest) {
 XMLHttpRequest.prototype.send = function (...args) {
     this.addEventListener('load', function () {
         if (this.status === 402) {
-            console.log('[x402] Detected 402 response via XMLHttpRequest:', this._x402_url || this.responseURL);
-
             try {
                 const headers = {};
                 const headersString = this.getAllResponseHeaders();
@@ -106,14 +100,11 @@ XMLHttpRequest.prototype.send = function (...args) {
     return XHRSend.apply(this, args);
 };
 
-console.log('[x402] Fetch and XMLHttpRequest interceptors installed');
 
 // Check for embedded x402 payment data (e.g., window.x402 object)
 // This handles cases where payment data is embedded in the HTML rather than returned as JSON
 function checkForEmbeddedX402Data() {
     if (typeof window.x402 !== 'undefined' && window.x402) {
-        console.log('[x402] Found embedded window.x402 object:', window.x402);
-
         // Extract payment requirements from the embedded object
         let paymentData = null;
 
@@ -127,7 +118,6 @@ function checkForEmbeddedX402Data() {
         }
 
         if (paymentData) {
-            console.log('[x402] Sending embedded payment data to background');
             window.postMessage({
                 type: 'X402_CAPTURED',
                 url: window.location.href,
@@ -158,7 +148,6 @@ window.addEventListener('message', (event) => {
 
     if (event.data.type === 'X402_BASKET_UPDATED') {
         const requestData = event.data.data;
-        console.log('[x402] Updating global basket state for:', requestData.url);
 
         // Update global state
         // Check if we already have this request (deduplication)
@@ -179,8 +168,6 @@ window.addEventListener('message', (event) => {
         window.dispatchEvent(new CustomEvent('x402-basket-updated', { detail: window.__X402_BASKETS__ }));
     }
 });
-
-console.log('[x402] AI Browser integration ready: window.__X402_BASKETS__ exposed');
 
 // Inject a meta tag to inform AI agents about the interface
 const meta = document.createElement('meta');
